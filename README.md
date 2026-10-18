@@ -382,3 +382,5 @@ Because raster images are not committed to source control, capture and save the 
 
 **Licensing has not yet been finalized by the repository owner.**
 The project is currently provided for evaluation and review purposes. An open-source license (such as MIT or Apache 2.0) will be added upon confirmation by the repository maintainer.
+
+Preview deployment verification
