@@ -236,47 +236,85 @@ flowchart LR
 
 ## 6. The 6-Point Deterministic Evidence Gate
 
-Before any candidate claim can be accepted or forwarded to the broadcast producer, it must pass the mathematical verification engine (`src/lib/verificationEngine/verifier.ts` and `rules.ts`):
+Before any candidate claim can be accepted or forwarded to the broadcast producer, it must pass the deterministic verification engine ([`src/lib/verificationEngine/verifier.ts`](src/lib/verificationEngine/verifier.ts), [`rules.ts`](src/lib/verificationEngine/rules.ts), and [`guardrails.ts`](src/lib/verificationEngine/guardrails.ts)):
 
 ```
 Rule 1: referencedEventsExist    ──► All referenced IDs exist in match event stream
 Rule 2: intervalBoundariesValid  ──► Event timestamps fall strictly within interval window
 Rule 3: numericClaimsVerified    ──► Recalculated from raw events within strict tolerance
-Rule 4: causalGuardrailPassed    ──► Causal words flagged; downgraded to correlation
+Rule 4: causalGuardrailPassed    ──► Causal vocabulary flagged; qualified to correlation
 Rule 5: counterEvidenceAssessed  ──► Contradictory events detected and uncertainty calibrated
-Rule 6: sampleSizeSufficient     ──► Interval contains at least 10 recorded events
+Rule 6: sampleSizeSufficient     ──► Interval contains at least 10 recorded match events
 ```
 
 ### Detailed Validation Contract:
 
 1. **Event Reference Verification (`referencedEventsExist`)**:
-   - Every cited event ID (e.g. `ev_sig_0012`) must exist in the match stream.
-   - IDs are deduplicated before validation to prevent artificial count inflation.
-   - If any cited ID is missing or invalid, the claim is immediately **`rejected`** with `uncertaintyScore: 1.0`.
+   - Every cited event ID (e.g. `ev_sig_0012`) must exist in the match event stream ([`validateEventReferences`](src/lib/verificationEngine/rules.ts)).
+   - Cited IDs are deduplicated before validation (`Array.from(new Set(...))`) so repeated references cannot artificially inflate valid counts.
+   - If any cited ID is missing or invalid, the claim is rejected with `uncertaintyScore: 1.0` and `ruleChecks.referencedEventsExist = false`.
+   - In the multi-agent loop, [`runEvidenceAuditor`](src/lib/agents/evidenceAuditor.ts) issues a revision directive identifying the exact missing IDs (`missingIds`) before failing closed.
 
 2. **Interval Boundary Alignment (`intervalBoundariesValid`)**:
-   - Every cited event's timestamp (`minute`, `second`) must fall strictly within the requested interval window (e.g. `16'–30'`).
-   - Cross-interval data contamination (e.g. citing a minute 12 event to prove a minute 28 claim) triggers immediate rejection.
+   - Every cited event's timestamp (`minute`) must satisfy $T_{\text{start}} \le \text{minute} \le T_{\text{end}}$ for the requested interval window (e.g. $16 \le \text{minute} \le 30$).
+   - Any event occurring outside this boundary is flagged in `mismatchedIntervalIds`.
+   - Cross-interval data contamination (e.g. citing a minute 12 event to prove a minute 28 breakdown) causes validation failure and immediate rejection.
 
 3. **Independent Metric Recalculation & Tolerance (`numericClaimsVerified`)**:
-   - Metric percentages are recalculated directly from underlying raw events via `calculateTeamIntervalMetrics`.
-   - Recalculated values must match claimed values within strict, metric-appropriate tolerances:
+   - Candidate assertions are recomputed directly from underlying raw telemetry via [`calculateTeamIntervalMetrics`](src/lib/eventEngine/statsCalculator.ts) rather than trusting an unverified model snapshot.
+   - Recalculation is strictly restricted to supported metrics (`SUPPORTED_METRICS`: `passingSuccessRate`, `pressureFrequencyPerMin`, `highTurnovers`, `progressiveMeters`, `totalPasses`, `successfulPasses`, `failedPasses`, `shotsTotal`, `shotsOnTarget`).
+   - **Fail-Closed Principle**: Unknown metric names or non-finite claimed numbers (`NaN`, `Infinity`, `-Infinity`) immediately fail verification (`matches: false`, `recalculatedValue: NaN`).
+   - If a claim text asserts percentages or frequencies (or belongs to category `pressure_surge`), numeric assertions are mandatory; omitting them triggers immediate rejection.
+   - Recalculated figures must match claimed values within explicit metric-appropriate tolerances ([`verifyNumericAssertion`](src/lib/verificationEngine/rules.ts)):
      - `passingSuccessRate`: Default tolerance is $\pm 1.5\text{ percentage points}$.
      - `pressureFrequencyPerMin`: Default tolerance is $\pm 0.2\text{ actions/min}$.
-     - Other count metrics: Default tolerance is $\pm 1.0$.
-   - **Fail-Closed Principle**: Non-finite numbers (`NaN`, `Infinity`) or unsupported metric names immediately fail verification.
+     - Count and progression metrics: Default tolerance is $\pm 1.0$.
+   - **Zero-Denominator Safety**: If `totalPasses === 0`, `passingSuccessRate` explicitly returns `0.0` (never `NaN`). The interval duration denominator is clamped to $\ge 1\text{ minute}$ (`Math.max(1, endMinute - startMinute + 1)`), preventing division by zero during empty intervals.
 
 4. **Epistemic Classification & Causal Guardrails (`causalGuardrailPassed`)**:
-   - Regex and vocabulary parser flags unproven causal attribution verbs (`caused`, `led to`, `forced`, `resulted in`).
-   - If causal language is detected without mechanical proof, the claim is qualified as **`accepted_with_uncertainty`** (`uncertaintyScore: 0.45`) and certified as observed correlation (`coincided with`).
+   - Proofline FC treats causal attribution with strict epistemic caution. This rule implements a **lexical guardrail and vocabulary heuristic** ([`guardrails.ts`](src/lib/verificationEngine/guardrails.ts)), scanning for unproven causal triggers (`caused`, `directly led to`, `responsible for`, `resulted entirely from`, `forced every`, `proves that`, `due solely to`) and interpretive tropes (`struggled`, `dominated`, `panicked`, `tactical mastery`).
+   - *Epistemic Distinction*: Observational match telemetry demonstrates correlation and statistical co-occurrence, not mechanical causality. The engine does not perform counterfactual causal inference; rather, it prevents language models from asserting unproven causation as factual certainty.
+   - When causal language is detected without mechanical proof, `isAcceptableAsFact = false`. The claim is not outright discarded; it is qualified as **`accepted_with_uncertainty`** (`uncertaintyScore: 0.45`), provided with neutral framing suggestions (`coincided with`, `occurred alongside`, `suggests`), and directed to the Analyst for reformulation.
 
 5. **Counter-Evidence Assessment (`counterEvidenceAssessed`)**:
-   - Scans raw event telemetry for contradictory evidence (e.g. successful progressive passes during an alleged breakdown, or recovery events).
-   - High-weight counter-evidence raises calibrated uncertainty to `0.50`.
+   - The engine scans interval telemetry for contradictory events that qualify or contextualize the claim ([`scanForCounterEvidence`](src/lib/verificationEngine/rules.ts)):
+     - For passing degradation claims (`passing_decay`): Scans for $\ge 4$ successful progressive passes ($> 20\text{m}$) by the team during the alleged collapse. If found, logs up to 3 `recovery_observed` contradiction items (`weight: 'medium'`).
+     - For pressure claims (`pressure_surge`): Scans for $\ge 3$ sub-threshold pressure events ($< 0.6$ intensity) indicating low disruption (`weight: 'low'`).
+   - High-weight counter-evidence or tactical recovery items raise calibrated uncertainty to `0.50` and yield **`accepted_with_uncertainty`**. The rule check flag (`counterEvidenceAssessed: true`) confirms the adversarial scan executed.
 
 6. **Sample Size Threshold (`sampleSizeSufficient`)**:
-   - The interval must contain at least 10 recorded match events.
-   - If event count $< 10$, the claim is marked **`insufficient_evidence`** with calibrated high uncertainty ($\ge 0.85$) and deferred from broadcast.
+   - The interval must contain an effective sample count of at least **10 recorded match events** (`effectiveSampleCount >= 10`).
+   - If event density $< 10$ events, the claim is assigned **`insufficient_evidence`** with high uncertainty (`uncertaintyScore: 0.85`), setting `ruleChecks.sampleSizeSufficient = false`.
+   - Quiet or empty intervals (e.g. 0 to 9 events) fail this rule, preventing models from drawing sweeping tactical conclusions from sparse or noisy sample sizes.
+
+### Verdict Semantics, Revision Loops & The Publication Boundary
+
+Passing individual evidence checks is necessary, but **does not guarantee on-air broadcast**. Proofline FC maintains a clear architectural separation between verification auditing and broadcast publication:
+
+| Audit Outcome | Uncertainty Score | Condition in Code | Revision Loop Action | Broadcast Gate Decision |
+| :--- | :---: | :--- | :--- | :--- |
+| **`accepted`** | `0.05` | All 6 checks pass; metrics within tolerance; no causal triggers or heavy counter-evidence. | No revision required. Forwarded to Producer. | Eligible for on-air broadcast subject to publication gate policy. |
+| **`accepted_with_uncertainty`** | `0.45 – 0.50` | Causal vocabulary flagged (`0.45`) or counter-evidence detected (`0.50`). Math and event IDs valid. | Revision requested if causal language and attempts $< 2$; otherwise forwarded with qualification. | Approved for broadcast with mandatory evidentiary note attached to Analyst chyron. |
+| **`rejected`** | `0.95 – 1.0` | Phantom event IDs (`1.0`), out-of-interval events (`1.0`), metric mismatch (`0.95`), or revision limit exhausted. | Revision requested if attempts $< 2$; fails closed upon exhaustion. | **Strictly blocked from broadcast** (`decision: 'rejected_by_producer'`). |
+| **`insufficient_evidence`** | `0.85` | Effective interval sample count $< 10$ match events. | No revision loop (data is genuinely sparse). | **Deferred from broadcast** (`decision: 'deferred'`, graphic withheld until data density increases). |
+
+#### Centralized Publication Gate Role:
+Even an `accepted` claim is not broadcast automatically. The **Master Publication Gate** ([`publicationGate.ts`](src/lib/verificationEngine/publicationGate.ts)) acts as an independent server-side policy boundary:
+- **Anti-Forgery & Replay Check**: Verifies authentic audit completion and matches `audit.claimId` and `audit.targetIntervalLabel` to the submission, preventing forged verified flags or cross-claim audit replays.
+- **Supersession Revocation**: Claims marked `superseded` are strictly barred from airing.
+- **Draft Numeric Fidelity**: Producer drafts are regex-parsed; any number not confirmed by verified assertions or telemetry snapshot blocks the broadcast.
+- **Lexical Guardrail Enforcement**: Paraphrased drafts cannot re-introduce banned causal phrases or ungrounded tactical cliches.
+
+### Implementation Traceability:
+
+| Verification Component | Source File | Key Functions | Verification Test Suites |
+| :--- | :--- | :--- | :--- |
+| **Audit Orchestration & Verdicts** | [`src/lib/verificationEngine/verifier.ts`](src/lib/verificationEngine/verifier.ts) | `verifyCandidateClaim` | [`engine.test.ts`](src/__tests__/engine.test.ts) |
+| **Event & Numeric Rules** | [`src/lib/verificationEngine/rules.ts`](src/lib/verificationEngine/rules.ts) | `validateEventReferences`, `verifyNumericAssertion`, `scanForCounterEvidence` | [`engine.test.ts`](src/__tests__/engine.test.ts) |
+| **Epistemic & Causal Guardrails** | [`src/lib/verificationEngine/guardrails.ts`](src/lib/verificationEngine/guardrails.ts) | `classifyClaimEpistemics`, `qualifyCausalClaim` | [`engine.test.ts`](src/__tests__/engine.test.ts) |
+| **Denominator Safety & Metrics** | [`src/lib/eventEngine/statsCalculator.ts`](src/lib/eventEngine/statsCalculator.ts) | `calculateTeamIntervalMetrics`, `computeIntervalSnapshot` | [`engine.test.ts`](src/__tests__/engine.test.ts) |
+| **Bounded Revision Handling** | [`src/lib/agents/evidenceAuditor.ts`](src/lib/agents/evidenceAuditor.ts) | `runEvidenceAuditor` | [`intervalScopingAndRevisions.test.ts`](src/__tests__/intervalScopingAndRevisions.test.ts) |
+| **Master Publication Policy** | [`src/lib/verificationEngine/publicationGate.ts`](src/lib/verificationEngine/publicationGate.ts) | `evaluateBroadcastPublicationGate` | [`publicationGate.test.ts`](src/__tests__/publicationGate.test.ts) |
 
 ---
 
