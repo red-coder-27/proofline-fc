@@ -45,7 +45,7 @@ export const ContextualEvidenceDrawer: React.FC<ContextualEvidenceDrawerProps> =
       <div>
         <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2 flex items-center gap-1.5">
           <Shield className="h-3.5 w-3.5 text-emerald-700" />
-          10-Point Verification Checklist
+          6-Point Verification Checklist
         </h4>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
           <div className="flex items-center gap-2 p-2 rounded-md bg-slate-50 border border-slate-200">
@@ -87,6 +87,28 @@ export const ContextualEvidenceDrawer: React.FC<ContextualEvidenceDrawerProps> =
               {audit.ruleChecks.causalGuardrailPassed
                 ? 'Causal Guardrail Passed'
                 : 'Causal Assertion Qualified'}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 p-2 rounded-md bg-slate-50 border border-slate-200">
+            {audit.ruleChecks.counterEvidenceAssessed ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+            )}
+            <span className="text-slate-800">Counter-Evidence Scanned</span>
+          </div>
+
+          <div className="flex items-center gap-2 p-2 rounded-md bg-slate-50 border border-slate-200">
+            {audit.ruleChecks.sampleSizeSufficient ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+            ) : (
+              <XCircle className="h-4 w-4 text-red-600 shrink-0" />
+            )}
+            <span className="text-slate-800">
+              {audit.ruleChecks.sampleSizeSufficient
+                ? 'Sample Size Sufficient (≥10)'
+                : 'Sample Size Sparse (<10)'}
             </span>
           </div>
         </div>

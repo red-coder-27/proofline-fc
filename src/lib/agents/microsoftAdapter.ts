@@ -86,6 +86,7 @@ export function buildFoundryEndpointUrl(config: MicrosoftFoundryConfig): string 
 export interface ModelCallResult {
   content: string;
   tokensUsed: number;
+  tokensReported?: boolean;
   latencyMs: number;
   provider: 'microsoft_foundry_live' | 'deterministic_agent_fallback';
   modelName: string;
@@ -95,6 +96,7 @@ export interface ModelCallResult {
 /**
  * Server-side execution of Microsoft Foundry model inference.
  * Reads environment variables directly and performs the authenticated REST call.
+ * Measures actual wall-clock elapsed time and provider-reported tokens only.
  */
 export async function executeFoundryPromptOnServer(
   systemPrompt: string,
@@ -106,6 +108,9 @@ export async function executeFoundryPromptOnServer(
 
   // If live credentials are supplied in server environment variables
   if (config.endpoint && config.apiKey && config.apiKey.trim().length > 0) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
     try {
       const url = buildFoundryEndpointUrl(config);
       const response = await fetch(url, {
@@ -123,50 +128,75 @@ export async function executeFoundryPromptOnServer(
           temperature,
           max_tokens: 800,
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
+
+      const elapsedMs = Math.max(1, Date.now() - startTime);
 
       if (response.ok) {
         const data = await response.json();
         const content = data.choices?.[0]?.message?.content || '';
-        const tokensUsed = data.usage?.total_tokens || 350;
+        const reportedTokens = typeof data.usage?.total_tokens === 'number' ? data.usage.total_tokens : undefined;
+
         return {
           content,
-          tokensUsed,
-          latencyMs: Date.now() - startTime,
+          tokensUsed: reportedTokens ?? 0,
+          tokensReported: reportedTokens !== undefined,
+          latencyMs: elapsedMs,
           provider: 'microsoft_foundry_live',
           modelName: config.deploymentName || 'gpt-4o',
         };
       }
 
-      // Non-200 HTTP response (e.g. 401 unauthorized, 404 deployment not found)
+      // Explicitly distinguish provider error categories
+      let errorCategory = `Upstream HTTP ${response.status}`;
+      if (response.status === 401 || response.status === 403) {
+        errorCategory = `Upstream HTTP ${response.status}: Authentication failed (check Azure AI Foundry API key)`;
+      } else if (response.status === 404) {
+        errorCategory = `Upstream HTTP 404: Deployment "${config.deploymentName}" not found at endpoint`;
+      } else if (response.status === 429) {
+        errorCategory = `Upstream HTTP 429: Quota or rate limit exceeded on Azure deployment`;
+      }
+
       return {
         content: '',
-        tokensUsed: 220,
-        latencyMs: Date.now() - startTime,
+        tokensUsed: 0,
+        tokensReported: false,
+        latencyMs: elapsedMs,
         provider: 'deterministic_agent_fallback',
         modelName: 'Microsoft Foundry Rules Engine (Deterministic Fallback)',
-        errorDetails: `Upstream HTTP ${response.status}`,
+        errorDetails: errorCategory,
       };
     } catch (e: unknown) {
-      // Network/DNS error: gracefully fall back to deterministic agent
-      const msg = e instanceof Error ? e.message : 'Connection unreachable';
+      clearTimeout(timeoutId);
+      const elapsedMs = Math.max(1, Date.now() - startTime);
+      const isTimeout = e instanceof Error && (e.name === 'AbortError' || e.message.includes('abort'));
+      const msg = isTimeout
+        ? 'Request timed out after 15000ms'
+        : e instanceof Error
+        ? e.message
+        : 'Connection unreachable';
+
       return {
         content: '',
-        tokensUsed: 220,
-        latencyMs: Date.now() - startTime,
+        tokensUsed: 0,
+        tokensReported: false,
+        latencyMs: elapsedMs,
         provider: 'deterministic_agent_fallback',
         modelName: 'Microsoft Foundry Rules Engine (Deterministic Fallback)',
-        errorDetails: `Network error: ${msg}`,
+        errorDetails: isTimeout ? msg : `Network error: ${msg}`,
       };
     }
   }
 
-  // Clean deterministic fallback when credentials are not configured
-  const simulatedLatency = Math.floor(45 + Math.random() * 30);
+  // Clean deterministic fallback when credentials are not configured (strictly measured wall-clock time)
   return {
     content: '',
-    tokensUsed: 220,
-    latencyMs: simulatedLatency,
+    tokensUsed: 0,
+    tokensReported: false,
+    latencyMs: Math.max(1, Date.now() - startTime),
     provider: 'deterministic_agent_fallback',
     modelName: 'Microsoft Foundry Rules Engine (Deterministic Fallback)',
   };
@@ -182,6 +212,7 @@ export async function executeFoundryPrompt(
   userPrompt: string,
   temperature = 0.2
 ): Promise<ModelCallResult> {
+  const startTime = Date.now();
   if (typeof window !== 'undefined') {
     try {
       const res = await fetch('/api/foundry', {
@@ -198,8 +229,9 @@ export async function executeFoundryPrompt(
 
     return {
       content: '',
-      tokensUsed: 220,
-      latencyMs: 55,
+      tokensUsed: 0,
+      tokensReported: false,
+      latencyMs: Math.max(1, Date.now() - startTime),
       provider: 'deterministic_agent_fallback',
       modelName: 'Microsoft Foundry Rules Engine (Deterministic Fallback)',
     };

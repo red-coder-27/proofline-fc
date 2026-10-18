@@ -23,7 +23,7 @@ This script provides an exact, timed walkthrough for judges and reviewers. It us
 1. **Live Scoreboard**: London Titans 1 - 1 Munich Red Star (`30' (16'-30')`).
 2. **Contextual Evidence Drawer** (Right panel):
    - Notice the candidate claim: *"London Titans passing accuracy fell to ~58%..."*
-   - Point to the **Audit Badge**: `10/10 Checks Passed` and `0% Missing IDs`.
+   - Point to the **Audit Badge**: `6/6 Checks Passed` and `0% Missing IDs`.
    - Show that all referenced event IDs (`ev_...`) exist and are plotted directly on the pitch.
    - Point to the **Epistemic Qualification**: The system flagged causal language and certified the claim as an observed correlation rather than unproven causation.
 
@@ -65,7 +65,7 @@ This script provides an exact, timed walkthrough for judges and reviewers. It us
 
 ### What to Point Out on Screen
 1. **Tactical Pitch Frame**: Regulation emerald turf with stationary markers, floating inspection tooltip (`pointer-events: none`), and collision-avoided pills.
-2. **Producer Decision Log**: Confirms 10/10 audit checks passed and logs publication rationale.
+2. **Producer Decision Log**: Confirms 6/6 audit checks passed, publication gate approved, and logs publication rationale.
 3. **Audience Cards**: Side-by-side contrast between Casual Fan and Tactical Analyst drafts.
 
 ---

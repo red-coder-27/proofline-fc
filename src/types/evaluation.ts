@@ -37,6 +37,9 @@ export interface SystemRunMetric {
 
 export interface BenchmarkComparison {
   executedAt: string;
+  executionMode: 'deterministic_fixture_evaluation' | 'mocked_model_evaluation' | 'live_microsoft_foundry_evaluation';
+  tokensReported: boolean;
+  costAssumptions: string;
   sampleSizeDisclosure: string;
   metricDefinitions: MetricDefinition[];
   baselineSingleShot: SystemRunMetric;

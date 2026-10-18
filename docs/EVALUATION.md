@@ -38,10 +38,10 @@ The baseline represents how standard generative AI applications generate footbal
 
 ### Multi-Agent Evidence-Gated System (`orchestrator.ts`)
 - **Specialist Roles**: Analyst (proposes), Auditor (verifies), and Producer (gates).
-- **10-Point Checklist**: Independent recalculation against actual match telemetry within $\pm 2.0\%$ tolerance.
-- **Bounded Revision Loop**: If causal language is detected, the Auditor requests an epistemic revision (max 2 attempts) to reformulate the claim into an observed correlation.
-- **Publication Gate**: Unverified or rejected claims are strictly withheld from broadcast display.
-- **Truthline Ledger**: Stateful supersession links earlier claims to newer revisions when contradictions arrive.
+- **6-Point Deterministic Checklist**: Independent recalculation against actual match telemetry within $\pm 2.0\%$ tolerance (`verifier.ts`, `rules.ts`).
+- **Centralized Publication Gate**: Server-side policy gate (`publicationGate.ts`) strictly checking claim status, authentic passing audits, interval consistency, draft numeric veracity, and guardrails.
+- **Bounded Revision Loop**: If causal language or numeric discrepancies are detected, the Auditor issues specific revision directives (max 2 attempts).
+- **Truthline Ledger**: Stateful supersession links earlier claims to newer revisions when contradictions arrive, updating only upon genuine verified state transitions.
 
 ---
 
@@ -56,8 +56,8 @@ All metrics are calculated programmatically in `runFullBenchmark()` using the fo
 | `unsupportedClaimHallucinationRate` | **Broadcast Hallucination Rate** | $\frac{\text{Flawed/sparse claims leaked to broadcast}}{\text{Total flawed/sparse ground-truth claims}} \times 100$ | $N_{flaw} = 3$ (`gt_02`, `gt_05`, `gt_06`) |
 | `contradictionHandlingAccuracy` | **Contradiction Supersession Accuracy** | $\frac{\text{Contradictions where earlier claim was marked SUPERSEDED}}{\text{Total contradiction scenarios}} \times 100$ | $N_{contra} = 1$ (`gt_04`) |
 | `correctAbstentionRate` | **Correct Abstention Rate** | $\frac{\text{Sparse scenarios correctly deferred}}{\text{Total sparse scenarios}} \times 100$ | $N_{sparse} = 1$ (`gt_05`) |
-| `averageLatencyMs` | **Mean Latency (ms)** | $\frac{\sum \text{scenario execution durations}}{\text{Total scenarios evaluated}}$ | Total scenarios ($N = 6$) |
-| `estimatedCostPerInsightUSD` | **Estimated Cost Per Insight ($)** | $\frac{\text{Total prompt + completion tokens}}{N} \times \$0.000005$ | Assumes standard token price (\$5.00 / 1M tokens) |
+| `averageLatencyMs` | **Mean Latency (ms)** | $\frac{\sum \text{scenario execution durations}}{\text{Total scenarios evaluated}}$ | Wall-clock elapsed ms via `performance.now()` across all scenarios ($N = 6$) |
+| `estimatedCostPerInsightUSD` | **Estimated Cost Per Insight ($)** | $\frac{\text{Total prompt + completion tokens}}{N} \times \$0.000005$ | Estimated based on reference pricing (\$5.00 / 1M tokens) |
 
 ---
 
@@ -73,7 +73,7 @@ Executed via `runFullBenchmark()` on Node.js 20+ runtime:
     "unsupportedClaimHallucinationRate": 100.0,
     "contradictionHandlingAccuracy": 0.0,
     "correctAbstentionRate": 0.0,
-    "averageLatencyMs": 153,
+    "averageLatencyMs": 1.2,
     "estimatedCostPerInsightUSD": 0.0007,
     "totalClaimsEvaluated": 6
   },
@@ -83,7 +83,7 @@ Executed via `runFullBenchmark()` on Node.js 20+ runtime:
     "unsupportedClaimHallucinationRate": 0.0,
     "contradictionHandlingAccuracy": 100.0,
     "correctAbstentionRate": 100.0,
-    "averageLatencyMs": 210,
+    "averageLatencyMs": 3.8,
     "estimatedCostPerInsightUSD": 0.0017,
     "totalClaimsEvaluated": 6
   },
@@ -91,15 +91,15 @@ Executed via `runFullBenchmark()` on Node.js 20+ runtime:
     "accuracyDelta": 0.0,
     "hallucinationReduction": 100.0,
     "contradictionDelta": 100.0,
-    "latencyTradeoffMs": 57
+    "latencyTradeoffMs": 2.6
   }
 }
 ```
 
 ### Analysis of the Results
-- **Hallucination Elimination**: The Baseline published all 3 flawed test items (hallucinated event IDs, sparse sample size, and wrong math), yielding a 100.0% Broadcast Hallucination Rate. The Multi-Agent Evidence Gate blocked all three, achieving **0.0% Hallucination Rate**.
+- **Hallucination Elimination**: The Baseline published all 3 flawed test items (hallucinated event IDs, sparse sample size, and wrong math), yielding a 100.0% Broadcast Hallucination Rate on this fixture suite. The Multi-Agent Evidence Gate blocked all three, achieving **0.0% Hallucination Rate** on the test fixtures.
 - **Contradiction Adaptation**: When the passing accuracy rebounded in Interval `31'-45'`, the Baseline blindly repeated the earlier press collapse storyline. The Multi-Agent system verified the rebound, marked the earlier collapse claim as **`SUPERSEDED`**, and updated the chyron.
-- **Latency & Cost Trade-off**: The 3-agent orchestration with deterministic recalculation adds **+57 ms** of wall-clock latency (153 ms vs 210 ms) and **+$0.0010** per insight in token costs. In live television broadcasting, this sub-second trade-off is negligible compared to the reputational damage of false graphics.
+- **Latency & Cost Trade-off**: The multi-agent pipeline with deterministic recalculation and publication gate checks executes in single-digit milliseconds locally in deterministic mode (and reflects real network round-trip time in live Foundry mode).
 
 ---
 
@@ -121,20 +121,20 @@ Executed via `runFullBenchmark()` on Node.js 20+ runtime:
 ## 7. Latency and Cost Estimation Methodology
 
 ### Latency Measurement
-- Measured using `Date.now()` timestamps wrapped around agent invocations and verification execution.
-- In local Rules Fallback mode, latency reflects Node.js CPU execution time plus simulated API network latency.
-- In live Azure AI Foundry mode, latency includes actual HTTP round-trip time to the Azure datacenter.
+- Measured using genuine wall-clock elapsed time via high-resolution `performance.now()`.
+- **Zero artificial latency additions**: All hardcoded delays and randomized simulated latency offsets have been completely eliminated.
+- In deterministic fixture evaluation, latency measures actual CPU computation time.
+- In live Azure AI Foundry mode, latency includes actual HTTP round-trip time to Azure AI endpoints.
 
 ### Cost Estimation
-- Token counts are tracked directly from model completions (or deterministic token counters).
-- Token pricing is calculated using a standard reference rate of **$0.000005 per token** ($5.00 per 1,000,000 prompt/completion tokens).
-- Baseline Single-Shot consumes ~140 tokens per insight (~$0.0007).
-- Multi-Agent consumes ~340 tokens per insight (~$0.0017) across Analyst, Auditor feedback, and Producer drafts.
+- Provider-reported token counts are captured directly when live Microsoft Foundry inference is executed.
+- When token usage is not returned by the provider, it is explicitly reported as "Not reported" rather than invented.
+- Estimated costs are labeled as estimates using a documented standard reference rate of **$0.000005 per token** ($5.00 per 1,000,000 tokens).
 
 ---
 
 ## 8. Known Benchmark Limitations
 
-- **Small Sample Size ($N=6$)**: The benchmark is designed to evaluate specific failure modes (boundary bugs, missing data, causal vocabulary), not to prove statistical significance across thousands of matches.
-- **Synthetic Data**: Match events are synthetically generated from parameterized probability distributions rather than live Opta/StatsBomb feeds.
-- **Deterministic Verifier Overhead**: The verifier runs in-memory; scaling to hundreds of concurrent matches would require distributed queueing.
+- **Controlled Fixture Suite ($N=6$)**: The benchmark is designed to evaluate specific failure modes (boundary bugs, missing data, causal vocabulary, mathematical errors) in deterministic fixtures. It does not measure statistical accuracy over thousands of live match feeds.
+- **Synthetic Data**: Match events are synthetically generated for reproducible deterministic verification rather than live Opta/StatsBomb feeds.
+- **Evaluation Modes**: Benchmarks distinguish deterministic fixture evaluation, mocked model evaluation, and live Azure AI Foundry evaluation. Results from deterministic fixtures demonstrate verifier correctness, not live model behavior.

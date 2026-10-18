@@ -102,7 +102,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         {/* Verification Status Badge */}
         <div className="hidden lg:flex items-center gap-1.5 text-xs text-slate-600 font-medium bg-slate-50 border border-slate-200 rounded-md px-2 py-1">
           <ShieldCheck className="h-3.5 w-3.5 text-emerald-700" />
-          <span>10-Point Evidence Gate: Enforced</span>
+          <span>6-Point Evidence Gate: Enforced</span>
         </div>
 
         {/* Controls */}

@@ -7,7 +7,7 @@ Thank you for your interest in contributing to Proofline FC. We welcome contribu
 ## 1. Core Principles for Contributors
 
 1. **Deterministic Verification is Non-Negotiable**:
-   Never allow language model completions to directly modify verified states without passing the 10-point evidence checklist in `src/lib/verificationEngine/verifier.ts`.
+   Never allow language model completions to directly modify verified states without passing the 6-point evidence checklist in `src/lib/verificationEngine/verifier.ts` and the centralized publication gate in `src/lib/verificationEngine/publicationGate.ts`.
 2. **Empirical Truthfulness**:
    Never fabricate or hardcode benchmark metrics, model accuracy percentages, or latency values. All evaluation claims must be calculated from reproducible code executions.
 3. **Zero Secrets in Repository**:
@@ -25,7 +25,7 @@ Thank you for your interest in contributing to Proofline FC. We welcome contribu
 
 ```bash
 # 1. Fork and clone repository
-git clone https://github.com/your-username/proofline-fc.git
+git clone https://github.com/red-coder-27/proofline-fc.git
 cd proofline-fc
 
 # 2. Install dependencies
@@ -53,7 +53,7 @@ Use clear, imperative commit messages:
 ```
 fix(broadcast): eliminate SVG marker hover flicker by removing CSS scale
 test(benchmark): add regression test for duplicate claim ID deduplication
-docs(architecture): document 10-point evidence checklist handoffs
+docs(architecture): document 6-point evidence checklist handoffs
 ```
 
 ---
@@ -69,7 +69,7 @@ npx tsc --noEmit
 # 2. Linter Check (Next.js ESLint rules)
 npm run lint
 
-# 3. Automated Test Suite (All 34+ unit & regression tests)
+# 3. Automated Test Suite (All 56 unit, regression, adversarial & security tests)
 npm test
 
 # 4. Production Build Verification (Next.js Turbopack)

@@ -33,7 +33,7 @@ export const PitchVisualization: React.FC<PitchVisualizationProps> = ({
             Spatial Event & Pressure Plot
           </h3>
           <p className="text-[11px] text-slate-500">
-            Directly mapped from deterministic synthetic telemetry ({filteredEvents.length} events plotted)
+            Full match stream ({filteredEvents.length} total events plotted • Claims cite specific verified subsets)
           </p>
         </div>
 

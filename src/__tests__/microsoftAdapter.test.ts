@@ -99,7 +99,8 @@ describe('Microsoft Foundry Adapter & Fallback Resilience', () => {
       'Microsoft Foundry Rules Engine (Deterministic Fallback)'
     );
     assert.ok(result.latencyMs >= 0);
-    assert.ok(result.tokensUsed > 0);
+    assert.strictEqual(result.tokensReported, false, 'Must not invent token counts during deterministic fallback');
+    assert.strictEqual(result.tokensUsed, 0);
   });
 
   it('invokes live endpoint and returns parsed completions when mock fetch succeeds', async () => {
@@ -209,7 +210,7 @@ describe('Microsoft Foundry Adapter & Fallback Resilience', () => {
       ],
     };
 
-    // Evidence Auditor runs 10-point deterministic gate
+    // Evidence Auditor runs 6-point deterministic gate
     const audit = verifyCandidateClaim(hallucinatedCandidate, events, snap, events.length);
     assert.strictEqual(audit.outcome, 'rejected', 'Auditor must reject hallucinated event IDs');
     assert.strictEqual(audit.ruleChecks.referencedEventsExist, false);
@@ -250,17 +251,34 @@ describe('Microsoft Foundry Adapter & Fallback Resilience', () => {
     });
     assert.strictEqual(fallbackWorkflow.metrics.isUsingMicrosoftFoundry, false);
 
-    // 2. With live mock credentials -> live mode (isUsingMicrosoftFoundry is true)
+    // 2. With live mock credentials -> live mode (isUsingMicrosoftFoundry is true when valid structured JSON returned)
     process.env.AZURE_AI_FOUNDRY_ENDPOINT = 'https://mock-foundry.openai.azure.com';
     process.env.AZURE_AI_FOUNDRY_KEY = 'mock_key';
 
+    const validSampleId = events[0].id;
     globalThis.fetch = (async () => {
       return new Response(
         JSON.stringify({
           choices: [
             {
               message: {
-                content: 'London Titans maintained tactical midfield structure.',
+                content: JSON.stringify({
+                  claimId: 'clm_model_live_test',
+                  claimText: 'London Titans maintained tactical midfield structure across opening interval.',
+                  category: 'territorial_dominance',
+                  referencedEventIds: [validSampleId],
+                  numericAssertions: [
+                    {
+                      teamId: 'home',
+                      metricName: 'passingSuccessRate',
+                      claimedValue: snap.home.passingSuccessRate,
+                      unit: '%',
+                    },
+                  ],
+                  alternativeHypotheses: ['Both teams maintained shape.'],
+                  tacticalContext: 'Steady baseline opening interval.',
+                  rationale: 'Observed steady passing rate across opening 15 minutes.',
+                }),
               },
             },
           ],
@@ -282,5 +300,154 @@ describe('Microsoft Foundry Adapter & Fallback Resilience', () => {
     });
     assert.strictEqual(liveWorkflow.metrics.isUsingMicrosoftFoundry, true);
     assert.strictEqual(liveWorkflow.metrics.foundryModelName, 'gpt-4o');
+    // Verify that model-generated text actually reached the workflow claim!
+    assert.strictEqual(
+      liveWorkflow.activeClaims[0].claimText,
+      'London Titans maintained tactical midfield structure across opening interval.'
+    );
+  });
+
+  it('changing valid model output changes the candidate claim passed to verification', async () => {
+    process.env.AZURE_AI_FOUNDRY_ENDPOINT = 'https://mock-foundry.openai.azure.com';
+    process.env.AZURE_AI_FOUNDRY_KEY = 'mock_key';
+
+    const events = generateSyntheticMatchEvents('signature_demo', 1, 15, 42);
+    const snap = computeIntervalSnapshot(events, {
+      startMinute: 1,
+      endMinute: 15,
+      label: "01'-15'",
+    });
+    const sampleId = events[0].id;
+
+    // First model response
+    globalThis.fetch = (async () => {
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  claimId: 'clm_custom_alpha',
+                  claimText: 'Alpha model hypothesis: Titans focused on left-flank progression.',
+                  category: 'territorial_dominance',
+                  referencedEventIds: [sampleId],
+                  numericAssertions: [
+                    {
+                      teamId: 'home',
+                      metricName: 'passingSuccessRate',
+                      claimedValue: snap.home.passingSuccessRate,
+                      unit: '%',
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+          usage: { total_tokens: 120 },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    const runAlpha = await executeMultiAgentWorkflow({
+      workflowId: 'test_alpha',
+      scenarioId: 'signature_demo',
+      snapshot: snap,
+      turningPoints: [],
+      events,
+      existingClaims: [],
+      currentIntervalIndex: 0,
+    });
+
+    // Second different model response
+    globalThis.fetch = (async () => {
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  claimId: 'clm_custom_beta',
+                  claimText: 'Beta model hypothesis: Central midfield pivot dictated tempo effectively.',
+                  category: 'territorial_dominance',
+                  referencedEventIds: [sampleId],
+                  numericAssertions: [
+                    {
+                      teamId: 'home',
+                      metricName: 'passingSuccessRate',
+                      claimedValue: snap.home.passingSuccessRate,
+                      unit: '%',
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+          usage: { total_tokens: 130 },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    const runBeta = await executeMultiAgentWorkflow({
+      workflowId: 'test_beta',
+      scenarioId: 'signature_demo',
+      snapshot: snap,
+      turningPoints: [],
+      events,
+      existingClaims: [],
+      currentIntervalIndex: 0,
+    });
+
+    assert.notStrictEqual(runAlpha.activeClaims[0].claimText, runBeta.activeClaims[0].claimText);
+    assert.strictEqual(
+      runAlpha.activeClaims[0].claimText,
+      'Alpha model hypothesis: Titans focused on left-flank progression.'
+    );
+    assert.strictEqual(
+      runBeta.activeClaims[0].claimText,
+      'Beta model hypothesis: Central midfield pivot dictated tempo effectively.'
+    );
+  });
+
+  it('safely falls back to deterministic rules when model output is malformed or invalid schema', async () => {
+    process.env.AZURE_AI_FOUNDRY_ENDPOINT = 'https://mock-foundry.openai.azure.com';
+    process.env.AZURE_AI_FOUNDRY_KEY = 'mock_key';
+
+    const events = generateSyntheticMatchEvents('signature_demo', 1, 15, 42);
+    const snap = computeIntervalSnapshot(events, {
+      startMinute: 1,
+      endMinute: 15,
+      label: "01'-15'",
+    });
+
+    // Return completely unparseable junk from model
+    globalThis.fetch = (async () => {
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: 'MALFORMED NON-JSON RESPONSE {missing brackets' } }],
+          usage: { total_tokens: 40 },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    const malformedRun = await executeMultiAgentWorkflow({
+      workflowId: 'test_malformed',
+      scenarioId: 'signature_demo',
+      snapshot: snap,
+      turningPoints: [],
+      events,
+      existingClaims: [],
+      currentIntervalIndex: 0,
+    });
+
+    // When model output is rejected by schema validator, system falls back safely
+    assert.strictEqual(
+      malformedRun.metrics.isUsingMicrosoftFoundry,
+      false,
+      'Must NOT report live Foundry success when model output failed schema validation'
+    );
+    assert.ok(malformedRun.activeClaims[0].claimText.length > 0);
   });
 });

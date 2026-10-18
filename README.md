@@ -12,7 +12,7 @@
 - **Runtime Environment**: Local Next.js 16 (Turbopack) application running at `http://localhost:3000`
 - **Hosted Deployment**: Currently local-only; no public cloud deployment is active or verified.
 - **Model Integration**: Microsoft Foundry / Azure OpenAI REST client with deterministic local rules fallback mode.
-- **Verification Suite**: 34 automated unit, integration, and regression tests passing across 10 test suites.
+- **Verification Suite**: 57 automated unit, integration, regression, adversarial, and security tests passing across 13 test suites.
 
 ---
 
@@ -26,7 +26,7 @@ Modern football broadcasting and tactical analysis increasingly rely on automate
 4. **Failure to Abstain**: Generating sweeping conclusions during low-density or sparse intervals (<10 events) where data is statistically insufficient.
 
 ### Intended Users
-- **Broadcast Producers & Graphic Operators**: Delivering lower-third chyrons that guarantee 0% unverified statements on air.
+- **Broadcast Producers & Graphic Operators**: Delivering lower-third chyrons protected by deterministic verification and a centralized publication policy gate.
 - **Tactical Analysts & Coaches**: Reviewing verified, provenance-backed event sequences with explicit uncertainty scores and counter-evidence scans.
 - **Sports Media & Content Creators**: Serving both analytical audiences (exact metric baselines) and casual fans (clear English, zero unearned jargon) from a single factual core.
 
@@ -38,16 +38,16 @@ Proofline FC solves this through an architectural principle:
 
 > **"No insight may be presented as verified unless its supporting evidence passes deterministic validation."**
 
-Rather than relying on an LLM to self-verify, Proofline FC decouples discovery, auditing, and publication into three specialized agent roles with an immutable evidence ledger (**Truthline**) and an external, deterministic 10-point verification engine.
+Rather than relying on an LLM to self-verify, Proofline FC decouples discovery, auditing, and publication into three specialized agent roles with an evidence ledger (**Truthline**), an external, deterministic 6-point verification engine, and a centralized publication gate.
 
 ```
 Raw Synthetic Telemetry ──► Stats & Turning Points ──► [Match State Analyst]
                                                                │ (Candidate Claim)
                                                                ▼
-[Producer Quality Gate] ◄── (Verdict / Audit) ◄── [Evidence Auditor]
-          │                                                    │ (Directive)
-          ▼                                                    ▼
-Truthline Ledger & Broadcast Chyrons             [Bounded Revision Loop: Max 2]
+[Publication Policy Gate] ◄── (Verdict / Audit) ◄── [Evidence Auditor]
+           │                                                   │ (Directive)
+           ▼                                                   ▼
+Truthline Ledger & Broadcast Chyrons            [Bounded Revision Loop: Max 2]
 ```
 
 ---
@@ -57,11 +57,11 @@ Truthline Ledger & Broadcast Chyrons             [Bounded Revision Loop: Max 2]
 1. **Deterministic Event Ingestion**: Ingests structured synthetic match events (passes, failed passes, pressures, turnovers, tackles) with precise timestamps, player/team attribution, and pitch coordinates.
 2. **Spatial Metric & Turning Point Detection**: Computes interval snapshots (15-minute windows) and detects statistical threshold crossings (e.g., pressure surges >40%, passing decay >15%).
 3. **Three Specialized Agent Roles**: Clear division of responsibility across Match State Analyst, Evidence Auditor, and Broadcast Producer.
-4. **10-Point Deterministic Evidence Gate**: Independent mathematical verifier that checks event existence, interval boundaries, recalculates metrics against tolerances (±2.0%), and assesses sample size thresholds.
+4. **6-Point Deterministic Evidence Gate**: Independent mathematical verifier that checks event existence, interval boundaries, recalculates metrics against tolerances (±2.0%), and assesses sample size thresholds.
 5. **Causal-Language Guardrails & Uncertainty Scoring**: Automatic epistemic qualification that catches causal language (`caused`, `directly led to`, `forced`) and downgrades claims to certified correlation (`coincided with`) with calibrated uncertainty scores.
 6. **Truthline Ledger & Supersession Lifecycle**: Stateful claim tracking where subsequent contradictory evidence explicitly marks earlier claims as `SUPERSEDED`, recording the superseding claim ID and updating broadcast graphics.
-7. **Broadcast Publication Quality Gate**: Strict 0% unverified publication policy. Unverified or rejected claims are withheld from on-air chyrons. Verified claims generate dual audience drafts: **Casual Fan** (plain English, no jargon) and **Tactical Analyst** (exact baselines, event provenance, uncertainty notes).
-8. **Six Controlled Benchmark Fixtures**: Built-in evaluation harness contrasting single-shot LLM baseline generation against the multi-agent evidence-gated system across controlled ground-truth test items.
+7. **Centralized Broadcast Publication Gate**: Deterministic publication policy boundary. Unverified, out-of-interval, or rejected claims are withheld from on-air chyrons. Verified claims generate dual audience drafts: **Casual Fan** (plain English, no jargon) and **Tactical Analyst** (exact baselines, event provenance, uncertainty notes).
+8. **Six Controlled Benchmark Fixtures**: Built-in evaluation harness contrasting single-shot LLM baseline generation against the multi-agent evidence-gated system across controlled ground-truth test items.s controlled ground-truth test items.
 
 ---
 
@@ -132,9 +132,9 @@ sequenceDiagram
 
 | Agent Role | Model vs Deterministic | Primary Responsibilities | Handoff & Outputs |
 | :--- | :--- | :--- | :--- |
-| **Match State Analyst** (`Agent 1`) | LLM (Microsoft Foundry) with deterministic fallback | Analyzes interval telemetry and detected turning points; formulates candidate tactical claims; specifies referenced event IDs and quantitative assertions; incorporates Auditor revision feedback. | Submits candidate claim package to `Evidence Auditor`. |
-| **Evidence Auditor** (`Agent 2`) | **100% Deterministic Code** | Executes the 10-point evidence checklist; verifies event existence; recalculates metrics from event telemetry; classifies epistemic modality; scans for counter-evidence; issues revision directives (max 2 loops) or rejections. | Emits audit verdict, rule check results, uncertainty score (0.0 to 1.0), and notes to `Broadcast Producer`. |
-| **Broadcast Producer** (`Agent 3`) | LLM (Microsoft Foundry) with deterministic fallback | Enforces the Broadcast Quality Gate (strictly blocks rejected/sparse claims); adapts verified insights into dual audience chyrons (Casual Fan vs Analyst); logs publication rationale. | Commits verified record to `Truthline Ledger` and updates `Broadcast Studio` display. |
+| **Match State Analyst** (`Agent 1`) | LLM (Microsoft Foundry) with deterministic fallback | Analyzes interval telemetry and detected turning points; parses and validates model completion into candidate claim schema; specifies referenced event IDs and quantitative assertions; incorporates Auditor revision feedback. | Submits candidate claim package to `Evidence Auditor`. |
+| **Evidence Auditor** (`Agent 2`) | **100% Deterministic Code** | Executes the 6-point evidence checklist; verifies event existence and interval boundaries; recalculates metrics from event telemetry; classifies epistemic modality; scans for counter-evidence; issues revision directives (max 2 loops) or rejections. | Emits audit verdict, rule check results, uncertainty score (0.0 to 1.0), and notes to `Broadcast Producer`. |
+| **Broadcast Producer** (`Agent 3`) | LLM (Microsoft Foundry) with deterministic fallback | Enforces the Centralized Publication Gate (strictly blocks rejected/sparse/unverified claims); adapts verified insights into dual audience chyrons (Casual Fan vs Analyst); logs publication rationale. | Commits verified record to `Truthline Ledger` and updates `Broadcast Studio` display. |
 
 ---
 
@@ -145,33 +145,33 @@ Every claim tracked by Proofline FC moves through states defined strictly in `sr
 ```mermaid
 stateDiagram-v2
     [*] --> proposed: Analyst generates candidate claim
-    proposed --> audited: Auditor executes 10-point checklist
+    proposed --> audited: Auditor executes 6-point checklist
 
     state audited {
         [*] --> Evaluating
-        Evaluating --> RevisionRequested: Causal language / minor issue (revisions < 2)
+        Evaluating --> RevisionRequested: Causal language / numeric mismatch (revisions < 2)
         RevisionRequested --> Evaluating: Analyst resubmits revised claim
     }
 
-    audited --> rejected: Phantom IDs / numeric mismatch / max revisions exceeded
+    audited --> rejected: Phantom IDs / cross-interval / max revisions exceeded
     audited --> uncertain: Sparse sample (<10 events) / heavy counter-evidence
-    audited --> verified: All 10 checks pass (accepted)
+    audited --> verified: All 6 checks pass (accepted)
 
-    rejected --> WithheldFromBroadcast: Producer blocks publication
-    uncertain --> QualifiedBroadcast: Producer publishes with calibrated uncertainty note
-    uncertain --> WithheldFromBroadcast: Producer defers publication
-    verified --> PublishedToBroadcast: Producer publishes Casual & Analyst chyrons
+    rejected --> WithheldFromBroadcast: Publication gate blocks publication
+    uncertain --> QualifiedBroadcast: Publication gate approves with calibrated uncertainty note
+    uncertain --> WithheldFromBroadcast: Publication gate defers publication
+    verified --> PublishedToBroadcast: Publication gate approves Casual & Analyst chyrons
 
-    PublishedToBroadcast --> superseded: Contradictory evidence in later interval
-    QualifiedBroadcast --> superseded: Contradictory evidence in later interval
+    PublishedToBroadcast --> superseded: Contradictory evidence verified in later interval
+    QualifiedBroadcast --> superseded: Contradictory evidence verified in later interval
 ```
 
 ### Verified Claim Statuses in Code (`ClaimStatus`):
 - `proposed`: Candidate claim drafted by Match State Analyst, awaiting audit.
-- `verified`: Passed all 10 deterministic audit checks without contradiction.
+- `verified`: Passed all 6 deterministic audit checks and approved by publication gate.
 - `uncertain`: Qualified as observed correlation, accompanied by counter-evidence or sparse sample size warning.
 - `rejected`: Failed event reference checks, failed numeric tolerance, or exceeded bounded revision loops.
-- `superseded`: Previously verified or qualified claim invalidated by subsequent match evidence.
+- `superseded`: Previously verified or qualified claim superseded by a newly verified claim in a subsequent interval.
 
 ---
 
@@ -220,9 +220,9 @@ All model inference requests pass through the server-side Next.js route handler 
 ### Deterministic Rules Fallback Mode
 When credentials are not configured, or if the cloud endpoint is unreachable (network timeout, HTTP 401/404):
 1. The engine automatically switches to **Rules Fallback Mode** (`Microsoft Foundry Rules Engine (Deterministic Fallback)`).
-2. The UI header prominently badges the active mode (`Deterministic Fallback`).
+2. The UI header prominently badges the active mode (`Rules Fallback (Active)`).
 3. Candidate claim proposals, epistemic revisions, and audience drafts are generated using internal deterministic templates derived from the exact match statistics.
-4. The full 10-point audit, Truthline ledger, and broadcast gate operate identically in both live cloud and fallback modes.
+4. The full 6-point audit, Truthline ledger, and centralized publication gate operate identically in both live cloud and fallback modes.
 
 ---
 
@@ -237,7 +237,7 @@ When credentials are not configured, or if the cloud endpoint is unreachable (ne
 
 1. **Clone Repository**:
    ```bash
-   git clone https://github.com/your-username/proofline-fc.git
+   git clone https://github.com/red-coder-27/proofline-fc.git
    cd proofline-fc
    ```
 
@@ -297,7 +297,7 @@ Copied verbatim from `package.json`:
 | `npm run build` | Compiles the production application bundle and validates static page generation. |
 | `npm run start` | Runs the compiled Next.js production build locally. |
 | `npm run lint` | Executes ESLint across all TypeScript and React source files using Next.js core web vitals rules. |
-| `npm run test` | Executes the 34-test automated suite using `tsx --test src/__tests__/**/*.test.ts`. |
+| `npm run test` | Executes the 56-test automated suite using `tsx --test src/__tests__/**/*.test.ts`. |
 
 ---
 
@@ -314,13 +314,13 @@ The evaluation harness (`src/lib/benchmarks/benchmarkRunner.ts`) runs 6 represen
 | **Broadcast Hallucination Rate** | 100.0% | **0.0%** | Flawed/sparse claims leaked to broadcast / Total flawed scenarios ($N_{flaw}=3$) |
 | **Contradiction Supersession Accuracy** | 0.0% | **100.0%** | Stale claims superseded / Total contradiction scenarios ($N_{contra}=1$) |
 | **Correct Abstention Rate** | 0.0% | **100.0%** | Sparse intervals deferred / Total sparse scenarios ($N_{sparse}=1$) |
-| **Mean End-to-End Latency** | **153 ms** | 210 ms | Wall-clock execution time across all 6 test scenarios (+57 ms trade-off) |
-| **Estimated Cost Per Insight** | **$0.0007** | $0.0017 | Total tokens across pipeline calculated at $0.000005 per token |
+| **Mean End-to-End Latency** | **1.2 ms** | 3.8 ms | Wall-clock execution time via `performance.now()` across all 6 test scenarios (+2.6 ms in local mode) |
+| **Estimated Cost Per Insight** | **$0.0007** | $0.0017 | Total tokens across pipeline calculated at reference $0.000005 per token |
 
 ### Benchmark Caveats & Scope Disclosure
 - **Sample Size ($N=6$)**: This benchmark tests deterministic gating mechanics across six controlled failure modes. It demonstrates architectural correctness, not large-N statistical generalization over real match feeds.
 - **Synthetic Data**: The events tested are synthetic event sequences generated by `generator.ts` with fixed seeds to guarantee reproducibility.
-- **Latency & Cost**: Latency figures represent local test execution with deterministic verification. In live cloud mode, latency will vary depending on network distance to Azure AI Foundry endpoints.
+- **Latency & Cost**: Latency figures represent local test execution with deterministic verification. In live cloud mode, latency reflects actual network round-trip time to Azure AI Foundry endpoints. Token usage is reported from the provider when live, or marked "Not reported". Cost is an estimate based on published token reference rates.
 
 ---
 

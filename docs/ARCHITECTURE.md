@@ -11,7 +11,7 @@ Proofline FC is an evidence-gated multi-agent platform designed to produce factu
 The platform is organized into three distinct layers:
 1. **Telemetry & Feature Ingestion Layer**: Ingests raw match events, computes rolling spatial statistics, and detects statistical threshold crossings (turning points).
 2. **Specialist Multi-Agent Orchestration Layer**: Coordinates proposal, audit, bounded revision, and broadcast packaging.
-3. **Evidence Verification & Ledger Layer**: Runs deterministic 10-point mathematical verification, maintains the Truthline ledger, and gates on-air broadcast displays.
+3. **Evidence Verification & Ledger Layer**: Runs the deterministic 6-point mathematical verification engine (`verifier.ts`), enforces the centralized publication policy gate (`publicationGate.ts`), maintains the Truthline ledger, and gates on-air broadcast displays.
 
 ```mermaid
 flowchart TD
@@ -25,17 +25,17 @@ flowchart TD
         TPDetect --> Analyst
         Analyst -->|"Candidate Claim Package<br/>(Claim text, referenced IDs, numerics)"| Auditor["Evidence Auditor<br/>(Agent 2 - Deterministic Code)"]
 
-        Auditor -->|"REQUEST_REVISION<br/>(Directive: remove causal assertion)"| Analyst
+        Auditor -->|"REQUEST_REVISION<br/>(Directive: recalculate numeric / qualify causal assertion)"| Analyst
         Analyst -->|"SUBMIT_REVISED_CLAIM<br/>(Max 2 Bounded Loops)"| Auditor
 
         Auditor -->|"AUDIT_VERDICT<br/>(Accepted / Uncertain / Rejected)"| Producer["Broadcast Producer<br/>(Agent 3 - LLM / Fallback)"]
     end
 
     subgraph Layer3["3. Verification Gate & Output Layer"]
-        Producer --> Gate{"Publication Gate<br/>(0% Unverified Rule)"}
-        Gate -->|"Rejected / Sparse"| Withheld["Withheld From Air<br/>(Producer Decision Logged)"]
-        Gate -->|"Verified / Qualified"| Broadcast["Broadcast Studio Chyrons<br/>(Casual Fan & Analyst Drafts)"]
-        Gate --> Ledger["Truthline Ledger<br/>(Immutable Claims, Revisions, Supersessions)"]
+        Producer --> Gate{"Centralized Publication Gate<br/>(Status, Audit, Numerics, Epistemic)"}
+        Gate -->|"Blocked / Withheld"| Withheld["Withheld From Broadcast<br/>(Logged in Decision Log)"]
+        Gate -->|"Approved"| Broadcast["Broadcast Studio Chyrons<br/>(Casual Fan & Analyst Drafts)"]
+        Gate --> Ledger["Truthline Ledger<br/>(Validated Claims, Revisions, Supersessions)"]
     end
 ```
 
@@ -49,11 +49,11 @@ To guarantee technical credibility, model-based reasoning is strictly bounded:
 | :--- | :---: | :--- | :--- |
 | **Event Generator** | Deterministic | None | Pseudorandom seed-based synthetic generator (`generator.ts`). |
 | **Stats Calculator** | Deterministic | None | Exact mathematical recalculations; guarded against division-by-zero. |
-| **Match State Analyst** | Hybrid (LLM + Fallback) | Drafts candidate claims and hypotheses from statistical anomalies. | If Foundry credentials missing: Uses template generator based on exact snapshot metrics. |
+| **Match State Analyst** | Hybrid (LLM + Fallback) | Drafts candidate claims via live Azure AI Foundry structured JSON; validated strictly against schema. | If Foundry credentials missing or inference fails: Uses deterministic fallback templates. Only labeled as live when model output influences candidate. |
 | **Evidence Auditor** | **100% Deterministic** | **None** | Completely independent code verifier. Never delegates audit decisions to an LLM. |
 | **Epistemic Guardrails** | Deterministic | None | Regex and vocabulary parser detecting causal words (`caused`, `forced`, `led to`). |
-| **Broadcast Producer** | Hybrid (LLM + Fallback) | Adapts verified facts into audience-specific drafts (Casual Fan vs Analyst). | Strict programmatic gate: If audit outcome is `rejected`, code unconditionally blocks publication regardless of LLM generation. |
-| **Truthline Ledger** | Deterministic | None | Immutable state ledger; handles deduplication and supersession links. |
+| **Broadcast Producer** | Hybrid (LLM + Fallback) | Adapts verified facts into audience-specific drafts (Casual Fan vs Analyst). | Centralized Publication Gate (`publicationGate.ts`): Server-side policy boundary strictly blocking unverified claims, fabricated numbers, or invented tactical mechanisms. |
+| **Truthline Ledger** | Deterministic | None | Stateful claim ledger; handles deduplication and validated supersession links. |
 
 ---
 
@@ -66,94 +66,103 @@ sequenceDiagram
     participant Analyst as Match State Analyst (Agent 1)
     participant Auditor as Evidence Auditor (Agent 2)
     participant Producer as Broadcast Producer (Agent 3)
+    participant Gate as Publication Gate (Central Policy)
     participant Ledger as Truthline Ledger
 
     EE->>Analyst: Snapshot (metrics, turning points, interval events)
-    Analyst->>Analyst: Draft candidate claim text + cited event IDs + numeric claims
+    Analyst->>Analyst: Model completion parsed & validated into CandidateClaimInput
     Analyst->>Auditor: PROPOSE_CANDIDATE_INSIGHT (CandidateClaimPackage)
 
-    Auditor->>Auditor: Run 10-Point Checklist:
-    Auditor->>Auditor: 1. Validate event IDs exist in match ledger
-    Auditor->>Auditor: 2. Check timestamps fall within interval window
-    Auditor->>Auditor: 3. Recalculate metric denominators from raw events
-    Auditor->>Auditor: 4. Check tolerance (±2.0%)
-    Auditor->>Auditor: 5. Scan for contradictory counter-evidence events
-    Auditor->>Auditor: 6. Epistemic analysis: detect unproven causal assertions
-    Auditor->>Auditor: 7. Check sample size threshold (minimum 10 events)
+    Auditor->>Auditor: Run 6-Point Verification Checklist:
+    Auditor->>Auditor: 1. Validate all referenced event IDs exist in active interval
+    Auditor->>Auditor: 2. Check event timestamps fall within interval window
+    Auditor->>Auditor: 3. Recalculate metrics from raw events (±2.0% tolerance)
+    Auditor->>Auditor: 4. Epistemic analysis & causal guardrail enforcement
+    Auditor->>Auditor: 5. Counter-evidence scan for contradictory events
+    Auditor->>Auditor: 6. Sample size check (minimum 10 events)
 
     opt Bounded Revision Loop (Max 2 Attempts)
-        Auditor->>Analyst: REQUEST_REVISION (Specific directive, e.g. "Epistemic qualification required")
+        Auditor->>Analyst: REQUEST_REVISION (Specific directive: recalculate/qualify)
         Analyst->>Analyst: Reformulate claim into observed correlation
         Analyst->>Auditor: SUBMIT_REVISED_CLAIM (Revised claim package)
         Auditor->>Auditor: Re-audit revised claim
     end
 
     Auditor->>Producer: AUDIT_VERDICT_ISSUED (Audit object, rule checks, uncertainty score)
+    Producer->>Gate: SUBMIT_FOR_PUBLICATION (Claim, Audit, Audience Drafts)
 
-    alt Audit Outcome is REJECTED or INSUFFICIENT_EVIDENCE
-        Producer->>Producer: Enforce Quality Gate: published = false
-        Producer->>Ledger: Commit with status 'rejected' or 'uncertain' (withheld)
+    alt Audit Outcome is REJECTED, EXHAUSTED, or GATE_BLOCKED
+        Gate->>Producer: PUBLICATION_DENIED (Withheld from air)
+        Producer->>Ledger: Record with status 'rejected' or 'uncertain' (withheld)
     else Audit Outcome is ACCEPTED or ACCEPTED_WITH_UNCERTAINTY
-        Producer->>Producer: Generate Casual Fan draft (plain English) & Analyst draft (exact stats)
-        Producer->>Ledger: Commit with status 'verified' or 'uncertain' (published)
+        Gate->>Producer: PUBLICATION_APPROVED
+        Producer->>Ledger: Record with status 'verified' or 'uncertain' (published)
     end
 
     opt Contradictory Evidence in Subsequent Interval
-        Ledger->>Ledger: Mark earlier passing collapse claim as SUPERSEDED (link to superseding ID)
+        Ledger->>Ledger: Mark earlier passing collapse claim as SUPERSEDED by newly verified claim
     end
 ```
 
 ---
 
-## 4. The 10-Point Deterministic Evidence Checklist
+## 4. The 6-Point Deterministic Evidence Checklist
 
-Implemented in `src/lib/verificationEngine/verifier.ts`:
+Implemented in `src/lib/verificationEngine/verifier.ts` and `rules.ts`:
 
-1. **Event Existence Verification**: Every referenced event ID (e.g., `ev_sig_0012`) must exist in the active event stream.
-2. **Interval Boundary Alignment**: Referenced events must have timestamps (`minute`, `second`) falling within the target interval window (e.g., `16'-30'`).
-3. **Independent Recalculation**: Claimed metric percentages (e.g., passing accuracy) are recalculated from underlying raw events, not trusted from agent prompts.
-4. **Tolerance Checking**: The difference between claimed value and recalculated value must not exceed `±2.0%`.
-5. **Sample Size Threshold**: The interval must contain at least 10 recorded events. If count $< 10$, the claim is marked `insufficient_evidence` with an uncertainty score $\ge 0.85$.
-6. **Counter-Evidence Assessment**: Scans for contradictory events (e.g., successful progressive passes during an alleged total passing failure).
-7. **Epistemic Classification**: Categorizes claim modality into `factual` (direct observation), `interpretive` (qualitative), or `causal` (mechanistic attribution).
-8. **Causal Guardrail Enforcement**: Any claim using causal verbs (`caused`, `led to`, `forced`) without verifiable mechanism evidence is rejected or downgraded to `accepted_with_uncertainty` (observed correlation).
-9. **Calibrated Uncertainty Scoring**: Assigns an uncertainty score from `0.05` (fully verified) to `1.0` (fully rejected).
-10. **Publication Quality Gate**: A claim can only be marked `published: true` if its audit outcome is `accepted` or `accepted_with_uncertainty`.
+1. **Event Reference Verification** (`referencedEventsExist`): Every referenced event ID (e.g., `ev_sig_0012`) must exist in the active event stream and belong to the active match interval.
+2. **Interval Boundary Alignment** (`intervalBoundariesValid`): Referenced events must have timestamps (`minute`, `second`) falling strictly within the requested interval window (e.g., `16'-30'`). Cross-interval contamination is rejected.
+3. **Independent Recalculation & Tolerance** (`numericClaimsVerified`): Claimed metric percentages (e.g., passing accuracy) are recalculated from underlying raw events via `calculateTeamIntervalMetrics`. Recalculations must match within `±2.0%` tolerance. Unknown metrics and empty assertion lists fail closed.
+4. **Epistemic Classification & Causal Guardrail** (`causalGuardrailPassed`): Flags unproven causal attribution verbs (`caused`, `led to`, `forced`) without verifiable mechanism evidence and downgrades claims to `accepted_with_uncertainty` (observed correlation).
+5. **Counter-Evidence Assessment** (`counterEvidenceAssessed`): Scans raw events for contradictory events (e.g., successful progressive passes during an alleged collapse).
+6. **Sample Size Threshold** (`sampleSizeSufficient`): The interval must contain at least 10 recorded events. If count $< 10$, the claim is marked `insufficient_evidence` with calibrated high uncertainty ($\ge 0.85$).
+
+### The Centralized Publication Gate (`publicationGate.ts`)
+
+Before any claim can be published to on-air graphics:
+- **Status Check**: Status must be `verified` or qualified `uncertain`. Claims with status `rejected`, `proposed`, or `superseded` are blocked.
+- **Audit Verification**: Validates that the claim's audit actually passed. Forged `verified` claims with missing audit checks are blocked.
+- **Interval Consistency**: Verifies the claim belongs to the active match interval.
+- **Evidence Integrity**: All supporting event IDs must be valid.
+- **Draft Numeric Veracity**: Producer audience drafts are parsed for numeric statements; numbers must match verified metric assertions.
+- **Broadcast Guardrails**: Paraphrased broadcast drafts are scanned for causal trigger words and invented tactical mechanisms (`in their own half`, `bypassed pressing traps`).
 
 ---
 
 ## 5. Truthline Ledger & Contradiction Supersession
 
-The Truthline ledger maintains an audit history across intervals:
+The Truthline ledger maintains a stateful audit history across intervals:
 
 ```
 [Interval 01'-15'] clm_baseline_01  ──► VERIFIED   (Balanced tactical baseline)
-[Interval 16'-30'] clm_collapse_16  ──► SUPERSEDED (Passing collapsed to 58% under press)
+[Interval 16'-30'] clm_collapse_16  ──► SUPERSEDED (Passing collapsed to ~58% under press)
                                               │
-                                              ▼ (Superseded by)
+                                              ▼ (Superseded by newly verified claim)
 [Interval 31'-45'] clm_rebound_31   ──► VERIFIED   (Passing rebounded to 75%+ under press)
 ```
 
 When new match evidence invalidates an earlier thesis:
 - The earlier record's `status` transitions from `verified` to `superseded`.
-- `supersededByClaimId` records the ID of the new insight.
+- `supersededByClaimId` records the ID of the newly verified insight.
 - `supersessionReason` provides an explicit explanation of why the earlier claim no longer holds.
+- Supersession is gated on genuine verification: an unverified or rejected candidate cannot supersede a verified claim.
 - The on-air chyron updates immediately to reflect tactical adaptation rather than repeating obsolete commentary.
 
 ---
 
 ## 6. Microsoft Foundry Integration Architecture
 
-The platform supports live Azure AI Foundry model execution alongside clean local fallback:
+The platform supports live Azure AI Foundry model execution alongside deterministic local fallback:
 
 ```mermaid
 flowchart LR
     Client["Browser Client / UI"] --> Route["Next.js Route Handler<br/>/api/foundry"]
-    Route --> Adapter["Microsoft Foundry Adapter<br/>(microsoftAdapter.ts)"]
+    Route --> Safeguards["Security & Policy Gate<br/>16KB Limit | 30 req/min | Domain Guard"]
+    Safeguards --> Adapter["Microsoft Foundry Adapter<br/>(microsoftAdapter.ts)"]
 
     Adapter --> ConfigCheck{"Credentials in .env.local?"}
-    ConfigCheck -->|"Yes (Endpoint + API Key)"| AzureCall["Azure AI Foundry REST API<br/>(/chat/completions?api-version=...)"]
-    ConfigCheck -->|"No / Network Failure"| LocalFallback["Deterministic Rules Engine<br/>(Deterministic Fallback)"]
+    ConfigCheck -->|"Yes (Endpoint + API Key)"| AzureCall["Azure AI Foundry REST API<br/>15s Timeout | gpt-4o"]
+    ConfigCheck -->|"No / Failure"| LocalFallback["Deterministic Fallback<br/>(Explicitly Labeled)"]
 
     AzureCall --> Normalized["Normalized ModelCallResult<br/>(content, tokensUsed, latencyMs, provider)"]
     LocalFallback --> Normalized
@@ -161,7 +170,9 @@ flowchart LR
     Route --> Client
 ```
 
-### Supported Endpoint Formats:
-1. **Azure OpenAI Base URL**: `https://<resource>.openai.azure.com`
-2. **Azure AI Foundry Project URL**: `https://<project>.services.ai.azure.com`
-3. **Pre-expanded Completions Route**: `https://<resource>.openai.azure.com/.../chat/completions?api-version=...`
+### Server-Side Safeguards:
+- **16KB Body Limit**: Prevents payload inflation attacks (HTTP 413).
+- **In-Memory Rate Limiting**: 30 requests per minute per IP window (HTTP 429).
+- **Football Domain Filter**: Validates prompt topic to prevent open proxy abuse (HTTP 400).
+- **15-Second Timeout**: `AbortSignal.timeout(15000)` prevents thread blocking on hanging upstream connections (HTTP 504).
+- **Safe Error Responses**: Upstream errors returned cleanly without exposing provider secrets or stack traces (HTTP 502/503).

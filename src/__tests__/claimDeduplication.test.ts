@@ -277,4 +277,108 @@ describe('Claim Deduplication and Key Stability Regression Suite', () => {
     const disambiguated = disambiguateDistinctClaimId(differentIntervalClaim, seenIds);
     assert.strictEqual(disambiguated, 'clm_test_1_31_passing_decay');
   });
+
+  it('regression: prevents stale publication when original claim has differing category from revised/superseded record', () => {
+    // Original model-proposed claim with category 'pressure_surge' and approved broadcast decision
+    const originalAnalystClaim: TruthlineRecord = {
+      claimId: 'clm_16_analyst',
+      version: 1,
+      claimText: 'Munich high press surged in interval 16-30.',
+      category: 'pressure_surge',
+      epistemicType: 'interpretive',
+      teamId: 'home',
+      interval: { startMinute: 16, endMinute: 30, label: "16'-30'" },
+      status: 'verified',
+      audit: dummyAudit,
+      revisions: [],
+      broadcastDecision: {
+        published: true,
+        decision: 'published',
+        rationale: 'Approved for live broadcast overlay.',
+        decidedAt: '2026-10-18T10:00:00Z',
+      },
+      provenance: dummyProvenance,
+    };
+
+    // Revised claim for the same interval with category 'passing_decay' that was later superseded
+    const revisedClaim: TruthlineRecord = {
+      claimId: 'clm_rev_16_1',
+      version: 2,
+      claimText: 'Titans passing collapsed under opponent pressure.',
+      category: 'passing_decay',
+      epistemicType: 'interpretive',
+      teamId: 'home',
+      interval: { startMinute: 16, endMinute: 30, label: "16'-30'" },
+      status: 'superseded',
+      supersededByClaimId: 'clm_31_analyst',
+      supersessionReason: 'Passing rebounded to 75% in interval 31-45.',
+      audit: dummyAudit,
+      revisions: [],
+      broadcastDecision: {
+        published: false,
+        decision: 'rejected_by_producer',
+        rationale: 'BROADCAST QUALITY GATEWAY REVOCATION: Claim was superseded by clm_31_analyst.',
+        historicalApprovalRationale: 'Approved for live broadcast overlay.',
+        revocationRationale: 'Passing rebounded to 75% in interval 31-45.',
+        decidedAt: '2026-10-18T10:00:00Z',
+        revokedAt: '2026-10-18T10:15:00Z',
+      },
+      provenance: dummyProvenance,
+    };
+
+    // New recovery claim for interval 31-45
+    const recoveryClaim: TruthlineRecord = {
+      claimId: 'clm_31_analyst',
+      version: 1,
+      claimText: 'London Titans adapted to pressure and passing rebounded to 75%.',
+      category: 'tactical_shift',
+      epistemicType: 'factual',
+      teamId: 'home',
+      interval: { startMinute: 31, endMinute: 45, label: "31'-45'" },
+      status: 'verified',
+      audit: dummyAudit,
+      revisions: [],
+      broadcastDecision: {
+        published: true,
+        decision: 'published',
+        rationale: 'Approved for live broadcast overlay.',
+        decidedAt: '2026-10-18T10:15:00Z',
+      },
+      provenance: dummyProvenance,
+    };
+
+    // When deduplicated:
+    const result = deduplicateTruthlineRecords([
+      originalAnalystClaim,
+      revisedClaim,
+      recoveryClaim,
+    ]);
+
+    // 1. Both 16-30 records must merge into exactly ONE canonical record for interval 16-30
+    assert.strictEqual(result.length, 2, 'Must merge same-interval duplicates so only 2 records exist (16-30 and 31-45)');
+
+    // 2. The 16-30 record MUST be superseded, with published: false and rejected_by_producer
+    const interval16Claim = result.find((c) => c.interval.startMinute === 16);
+    assert.ok(interval16Claim, 'Record for interval 16-30 must exist');
+    assert.strictEqual(interval16Claim.status, 'superseded', 'Must be superseded');
+    assert.strictEqual(interval16Claim.broadcastDecision?.published, false, 'Must NOT be published');
+    assert.strictEqual(interval16Claim.broadcastDecision?.decision, 'rejected_by_producer');
+    assert.strictEqual(interval16Claim.supersededByClaimId, 'clm_31_analyst');
+    assert.strictEqual(
+      interval16Claim.broadcastDecision?.historicalApprovalRationale,
+      'Approved for live broadcast overlay.'
+    );
+    assert.ok(interval16Claim.broadcastDecision?.revocationRationale);
+
+    // 3. Current published claims filter strictly leaves ONLY the 31-45 recovery claim
+    const published = result.filter(
+      (c) =>
+        c.broadcastDecision?.published &&
+        c.status !== 'superseded' &&
+        !c.supersededByClaimId &&
+        !c.broadcastDecision?.revocationRationale
+    );
+    assert.strictEqual(published.length, 1);
+    assert.strictEqual(published[0].claimId, 'clm_31_analyst');
+  });
 });

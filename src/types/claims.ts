@@ -51,6 +51,8 @@ export interface CounterEvidenceItem {
 }
 
 export interface VerificationAudit {
+  claimId?: string;
+  targetIntervalLabel?: string;
   verifiedAt: string;
   outcome: VerificationOutcome;
   ruleChecks: {
@@ -59,6 +61,7 @@ export interface VerificationAudit {
     numericClaimsVerified: boolean;
     causalGuardrailPassed: boolean;
     counterEvidenceAssessed: boolean;
+    sampleSizeSufficient?: boolean;
   };
   numericAssertions: NumericAssertion[];
   referencedEventIds: string[];
@@ -101,6 +104,9 @@ export interface TruthlineRecord {
     };
     rationale: string;
     decidedAt: string;
+    historicalApprovalRationale?: string;
+    revocationRationale?: string;
+    revokedAt?: string;
   };
   provenance: {
     proposedByAgent: string;

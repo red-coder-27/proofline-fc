@@ -2,15 +2,17 @@
  * Specialist Agent 3: Broadcast Producer.
  * Responsibilities:
  * - Ingest verified claims and their audited uncertainty.
- * - Enforce Broadcast Quality Gate: NEVER publish a rejected claim.
- * - Tailor presentation for two distinct audience profiles:
- *    1. Casual Fan (concise, clear, non-technical, no unsupported causal hype).
- *    2. Analyst (rich metrics, event references, baseline deltas, counter-evidence).
- * - Record explicit producer decision and rationale.
+ * - Enforce Centralized Publication Gate: NEVER publish a rejected, superseded,
+ *   or unverified claim to live broadcast overlays.
+ * - Formulate audience-specific personalizations (Casual Fan vs Analyst) strictly
+ *   grounded in verified facts, with zero unverified causal speculation or invented tactics.
+ * - Record explicit producer decision and policy rationale with genuine wall-clock measurement.
  */
 
-import { VerificationAudit } from '@/types/claims';
+import { VerificationAudit, ClaimStatus } from '@/types/claims';
 import { MatchIntervalSnapshot } from '@/types/stats';
+import { MatchEvent } from '@/types/events';
+import { evaluateBroadcastPublicationGate } from '../verificationEngine/publicationGate';
 
 export interface BroadcastDrafts {
   casualFan: string;
@@ -27,23 +29,31 @@ export interface ProducerDecision {
   latencyMs: number;
 }
 
+export interface BroadcastProducerOptions {
+  claimId?: string;
+  claimStatus?: ClaimStatus;
+  isSuperseded?: boolean;
+  activeEvents?: MatchEvent[];
+}
+
 export function runBroadcastProducer(
   claimText: string,
   audit: VerificationAudit,
   snapshot: MatchIntervalSnapshot,
-  category: string
+  category: string,
+  options?: BroadcastProducerOptions
 ): ProducerDecision {
   const startTime = Date.now();
 
-  // RULE 1: Never publish a rejected claim
+  // RULE 1: Never publish an audit-rejected claim
   if (audit.outcome === 'rejected') {
     return {
       published: false,
       decision: 'rejected_by_producer',
       rationale: `BROADCAST GATEWAY REJECTION: Insight failed evidence audit (${audit.decisionReason}). Broadcast standard prohibits publishing unverified or mathematically flawed claims to live graphic overlays.`,
       decidedAt: new Date().toISOString(),
-      tokensUsed: 80,
-      latencyMs: Date.now() - startTime + 15,
+      tokensUsed: 0,
+      latencyMs: Math.max(1, Date.now() - startTime),
     };
   }
 
@@ -54,41 +64,55 @@ export function runBroadcastProducer(
       decision: 'deferred',
       rationale: `BROADCAST GATEWAY DEFERRAL: Event density in interval ${snapshot.interval.label} is too sparse (${audit.validEventCount} events). Insight held back until sample size meets reliability threshold.`,
       decidedAt: new Date().toISOString(),
-      tokensUsed: 85,
-      latencyMs: Date.now() - startTime + 18,
+      tokensUsed: 0,
+      latencyMs: Math.max(1, Date.now() - startTime),
     };
   }
 
-  // Generate audience-specific presentations
+  // Generate audience-specific presentations strictly grounded in verified match metrics
   let casualFanDraft = '';
   let analystDraft = '';
 
   if (category === 'tactical_shift' || claimText.includes('rebounded') || claimText.includes('adapted')) {
-    casualFanDraft = `Titans respond! After early trouble with Munich's pressing, London has adjusted their passing and found room to breathe.`;
-    analystDraft = `Tactical Adaptation [${snapshot.interval.label}]: London Titans passing accuracy rebounded to ${snapshot.home.passingSuccessRate}% (recalculated from ${snapshot.home.successfulPasses}/${snapshot.home.totalPasses} passes) despite Munich sustaining 2.2+ pressure actions/min. Bypassed pressing traps with progressive vertical distribution.`;
+    casualFanDraft = `London Titans adapted under pressure, completing ${snapshot.home.successfulPasses} passes to lift accuracy to ${snapshot.home.passingSuccessRate}%.`;
+    analystDraft = `Tactical Adaptation [${snapshot.interval.label}]: London Titans passing accuracy rebounded to ${snapshot.home.passingSuccessRate}% (${snapshot.home.successfulPasses}/${snapshot.home.totalPasses} passes completed) while Munich Red Star maintained pressure at ${snapshot.away.pressureFrequencyPerMin} events/min. Verified across ${audit.validEventCount} source events.`;
   } else if (category === 'passing_decay') {
-    casualFanDraft = `Munich's intense pressing is paying off. London Titans are giving the ball away much more often in their own half.`;
-    analystDraft = `Passing Degradation [${snapshot.interval.label}]: London Titans passing accuracy dropped to ${snapshot.home.passingSuccessRate}% (down from 84.0% baseline). Coincided with Munich Red Star increasing defensive pressure to ${snapshot.away.pressureFrequencyPerMin} events/min. Verified across ${audit.validEventCount} source events.`;
+    casualFanDraft = `Munich Red Star pressure coincided with London Titans passing accuracy falling to ${snapshot.home.passingSuccessRate}%.`;
+    analystDraft = `Passing Degradation [${snapshot.interval.label}]: London Titans passing accuracy dropped to ${snapshot.home.passingSuccessRate}%, coinciding with Munich Red Star defensive pressure at ${snapshot.away.pressureFrequencyPerMin} events/min. Verified across ${audit.validEventCount} source events.`;
   } else {
-    casualFanDraft = `Steady play from both sides as they settle into tactical positions.`;
-    analystDraft = `Territorial Metrics [${snapshot.interval.label}]: London Titans ${snapshot.home.passingSuccessRate}% passing, ${snapshot.home.progressiveMeters}m progression. Munich Red Star ${snapshot.away.passingSuccessRate}% passing. Verified across ${audit.validEventCount} events.`;
+    casualFanDraft = `Balanced tactical structure in ${snapshot.interval.label}: London Titans completed ${snapshot.home.passingSuccessRate}% of passes.`;
+    analystDraft = `Territorial Metrics [${snapshot.interval.label}]: London Titans recorded ${snapshot.home.passingSuccessRate}% passing accuracy and ${snapshot.home.progressiveMeters}m progression; Munich Red Star recorded ${snapshot.away.passingSuccessRate}% passing accuracy. Verified across ${audit.validEventCount} source events.`;
   }
 
-  // If accepted with uncertainty, add disclaimer to analyst view
+  // If accepted with uncertainty, add explicit evidentiary caveat
   if (audit.outcome === 'accepted_with_uncertainty' && audit.uncertaintyReason) {
     analystDraft += ` [EVIDENTIARY NOTE: ${audit.uncertaintyReason}]`;
   }
 
-  return {
-    published: true,
-    decision: 'published',
-    audienceDrafts: {
+  // Enforce Centralized Publication Gate policy
+  const gateResult = evaluateBroadcastPublicationGate({
+    claimId: options?.claimId || audit.claimId || 'clm_producer_gate',
+    claimStatus: options?.claimStatus || 'verified',
+    claimText,
+    category,
+    interval: snapshot.interval,
+    audit,
+    proposedDrafts: {
       casualFan: casualFanDraft,
       analyst: analystDraft,
     },
-    rationale: `Approved for on-air broadcast overlay and analytics package. Evidence passed verification; claim framed as verified correlation; uncertainty calibrated at ${(audit.uncertaintyScore * 100).toFixed(0)}%.`,
+    activeEvents: options?.activeEvents || [],
+    activeSnapshot: snapshot,
+    isSuperseded: options?.isSuperseded,
+  });
+
+  return {
+    published: gateResult.canPublish,
+    decision: gateResult.decision,
+    audienceDrafts: gateResult.sanitizedDrafts,
+    rationale: gateResult.rationale,
     decidedAt: new Date().toISOString(),
-    tokensUsed: 190,
-    latencyMs: Date.now() - startTime + 35,
+    tokensUsed: 0,
+    latencyMs: Math.max(1, Date.now() - startTime),
   };
 }

@@ -191,4 +191,112 @@ describe('BroadcastStudio Layout & Label Collision Avoidance', () => {
     assert.strictEqual(deduped[0].version, 2, 'Higher version should be preserved');
     assert.strictEqual(deduped[0].claimId, 'clm_duplicate_01');
   });
+
+  it('selecting a superseded claim in broadcast pipeline treats publication as revoked while preserving historical archive and keeping new recovery claim published', () => {
+    const dummyAudit = {
+      verifiedAt: '2026-10-18T10:00:00Z',
+      outcome: 'accepted' as const,
+      ruleChecks: {
+        referencedEventsExist: true,
+        intervalBoundariesValid: true,
+        numericClaimsVerified: true,
+        causalGuardrailPassed: true,
+        counterEvidenceAssessed: true,
+        sampleSizeSufficient: true,
+      },
+      validEventCount: 8,
+      uncertaintyScore: 0.05,
+      referencedEventIds: ['ev_sig_0001', 'ev_sig_0002'],
+      numericAssertions: [],
+      missingEventIds: [],
+      counterEvidence: [],
+      decisionReason: 'Verified against telemetry',
+    };
+
+    const dummyProvenance = {
+      proposedByAgent: 'Match State Analyst',
+      auditedByAgent: 'Evidence Auditor',
+      producedByAgent: 'Broadcast Producer',
+    };
+
+    const claims: TruthlineRecord[] = [
+      {
+        claimId: 'clm_recovery_31',
+        version: 1,
+        claimText: 'London Titans passing rebounded to 75.0% under persistent pressure.',
+        category: 'tactical_shift',
+        epistemicType: 'factual',
+        teamId: 'home',
+        interval: { startMinute: 31, endMinute: 45, label: "31'-45'" },
+        status: 'verified',
+        audit: dummyAudit,
+        revisions: [],
+        broadcastDecision: {
+          published: true,
+          decision: 'published',
+          audienceDrafts: {
+            casualFan: 'London Titans adapted under pressure to lift accuracy to 75%.',
+            analyst: 'Tactical Adaptation [31\'-45\']: London Titans passing accuracy rebounded to 75.0% (24/32 completed).',
+          },
+          rationale: 'Approved for live broadcast overlay. Verified against 8 events.',
+          decidedAt: '2026-10-18T10:15:00Z',
+        },
+        provenance: dummyProvenance,
+      },
+      {
+        claimId: 'clm_decay_16',
+        version: 2,
+        claimText: 'London Titans passing accuracy dropped to 56.3% under opponent pressure.',
+        category: 'passing_decay',
+        epistemicType: 'interpretive',
+        teamId: 'home',
+        interval: { startMinute: 16, endMinute: 30, label: "16'-30'" },
+        status: 'superseded',
+        supersededByClaimId: 'clm_recovery_31',
+        supersessionReason: 'Superseded in interval 31\'-45\': New match evidence confirms Titans passing rebounded to 75.0%.',
+        audit: dummyAudit,
+        revisions: [],
+        broadcastDecision: {
+          published: false,
+          decision: 'rejected_by_producer',
+          rationale: 'BROADCAST QUALITY GATEWAY REVOCATION: Claim was superseded by clm_recovery_31 in interval 31\'-45\'. Superseded claims cannot be published as current broadcast statements.',
+          decidedAt: '2026-10-18T10:00:00Z',
+          historicalApprovalRationale: 'Approved for live broadcast overlay. Verified against 8 events; uncertainty calibrated at 10%.',
+          revocationRationale: 'Superseded in interval 31\'-45\': New match evidence confirms Titans passing rebounded to 75.0%.',
+          revokedAt: '2026-10-18T10:15:00Z',
+        },
+        provenance: dummyProvenance,
+      },
+    ];
+
+    const deduped = deduplicateTruthlineRecords(claims);
+    assert.strictEqual(deduped.length, 2, 'Both claims must remain accessible for historical inspection');
+
+    // 1. Published claims filter strictly excludes superseded claim
+    const publishedClaims = deduped.filter((c) => c.broadcastDecision?.published && c.status !== 'superseded');
+    assert.strictEqual(publishedClaims.length, 1, 'Only the recovery claim must be eligible for current live broadcast');
+    assert.strictEqual(publishedClaims[0].claimId, 'clm_recovery_31');
+
+    // 2. Superseded claim publication state is strictly revoked (NOT merely hidden in CSS)
+    const supersededClaim = deduped.find((c) => c.claimId === 'clm_decay_16');
+    assert.ok(supersededClaim);
+    assert.strictEqual(supersededClaim.status, 'superseded');
+    assert.strictEqual(supersededClaim.broadcastDecision?.published, false, 'Underlying state must be false');
+    assert.strictEqual(supersededClaim.broadcastDecision?.decision, 'rejected_by_producer');
+    assert.strictEqual(supersededClaim.supersededByClaimId, 'clm_recovery_31');
+
+    // 3. Decision log distinguishes historical approval from later revocation
+    assert.ok(
+      supersededClaim.broadcastDecision?.historicalApprovalRationale?.includes('Approved for live broadcast overlay'),
+      'Must preserve historical approval rationale'
+    );
+    assert.ok(
+      supersededClaim.broadcastDecision?.rationale.includes('REVOCATION'),
+      'Current rationale must state revocation'
+    );
+    assert.ok(
+      supersededClaim.broadcastDecision?.rationale.includes('clm_recovery_31'),
+      'Must name the superseding claim ID'
+    );
+  });
 });

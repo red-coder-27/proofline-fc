@@ -412,7 +412,14 @@ export const BroadcastStudio: React.FC<BroadcastStudioProps> = ({
 }) => {
   const dedupedClaims = useMemo(() => deduplicateTruthlineRecords(claims), [claims]);
   const publishedClaims = useMemo(
-    () => dedupedClaims.filter((c) => c.broadcastDecision?.published),
+    () =>
+      dedupedClaims.filter(
+        (c) =>
+          c.broadcastDecision?.published &&
+          c.status !== 'superseded' &&
+          !c.supersededByClaimId &&
+          !c.broadcastDecision?.revocationRationale
+      ),
     [dedupedClaims]
   );
 
@@ -479,7 +486,16 @@ export const BroadcastStudio: React.FC<BroadcastStudioProps> = ({
     return map;
   }, [citedLabelPlacements]);
 
-  const isPublished = Boolean(selectedClaim?.broadcastDecision?.published);
+  const isSuperseded = Boolean(
+    selectedClaim?.status === 'superseded' ||
+    selectedClaim?.supersededByClaimId ||
+    selectedClaim?.broadcastDecision?.revocationRationale
+  );
+  const isPublished = Boolean(
+    selectedClaim?.broadcastDecision?.published &&
+      !isSuperseded &&
+      selectedClaim?.status !== 'rejected'
+  );
   const isVerified = selectedClaim?.status === 'verified';
   const isUncertain = selectedClaim?.status === 'uncertain';
   const isRejected = selectedClaim?.status === 'rejected';
@@ -518,7 +534,14 @@ export const BroadcastStudio: React.FC<BroadcastStudioProps> = ({
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
         {dedupedClaims.map((c) => {
           const isSelected = selectedClaim?.claimId === c.claimId;
-          const isClaimPublished = c.broadcastDecision?.published;
+          const isClaimSuperseded = Boolean(
+            c.status === 'superseded' ||
+            c.supersededByClaimId ||
+            c.broadcastDecision?.revocationRationale
+          );
+          const isClaimPublished = Boolean(
+            c.broadcastDecision?.published && !isClaimSuperseded
+          );
 
           return (
             <button
@@ -536,7 +559,14 @@ export const BroadcastStudio: React.FC<BroadcastStudioProps> = ({
             >
               <span className="font-mono text-[11px]">{c.claimId}</span>
               <span className="truncate max-w-[120px]">{c.category.replace('_', ' ')}</span>
-              {isClaimPublished ? (
+              {isClaimSuperseded ? (
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    isSelected ? 'bg-amber-300 ring-1 ring-amber-400' : 'bg-amber-500'
+                  }`}
+                  title="Superseded in Later Interval (Withheld from Broadcast)"
+                />
+              ) : isClaimPublished ? (
                 <span
                   className={`h-2 w-2 rounded-full ${
                     isSelected ? 'bg-emerald-300' : 'bg-emerald-600'
@@ -845,7 +875,85 @@ export const BroadcastStudio: React.FC<BroadcastStudioProps> = ({
           {/* 2. DECOUPLED ON-AIR VERIFIED TACTICAL INSIGHT PANEL (OUTSIDE THE PITCH) */}
           {/* Positioned cleanly below the pitch canvas, never obscuring tactical lines or event markers */}
           <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-3.5">
-            {isPublished ? (
+            {isSuperseded ? (
+              /* 1. SUPERSEDED CLAIM: PROMINENT WITHHELD/SUPERSEDED NOTICE */
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-amber-50 border-2 border-amber-300 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-200 text-amber-950 border border-amber-400">
+                        <ShieldAlert className="h-4 w-4 text-amber-900" />
+                        <span>ON-AIR GRAPHIC WITHHELD — CLAIM SUPERSEDED</span>
+                      </span>
+                      <span className="text-xs font-semibold text-amber-900">
+                        Interval: <b className="text-amber-950">{selectedClaim.interval.label}</b> (Historical Archive)
+                      </span>
+                    </div>
+
+                    <span className="font-mono text-xs font-bold text-amber-900 bg-amber-100 px-2.5 py-0.5 rounded border border-amber-300">
+                      Superseded by: {selectedClaim.supersededByClaimId || 'clm_recovery_31'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1 pt-1">
+                    <div className="text-xs font-bold uppercase tracking-wider text-amber-900">
+                      Broadcast Quality Gate Revocation Notice:
+                    </div>
+                    <p className="text-sm font-semibold text-amber-950 leading-relaxed">
+                      {selectedClaim.supersessionReason ||
+                        `New match evidence in interval 31'-45' confirmed London Titans passing rebounded to 75.0% under persistent pressure, invalidating the previous explanation of irreversible collapse.`}
+                    </p>
+                    <p className="text-xs text-amber-800 leading-normal">
+                      Under the 0% Unverified Publication Rule, superseded intelligence is strictly withheld from live television chyrons to prevent presenting obsolete or invalidated narratives to viewers.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Evidence Provenance Strip for Historical Inspection */}
+                <div className="bg-slate-50 rounded-lg border border-slate-200 p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-slate-700">Historical Supporting Evidence ({selectedClaim.interval.label}):</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {selectedClaim.audit.referencedEventIds.map((id) => {
+                        const isSelected = selectedEventId === id;
+                        const isHovered = hoveredEventId === id;
+                        return (
+                          <button
+                            key={`evidence_ref_${id}`}
+                            onClick={() => setSelectedEventId((prev) => (prev === id ? null : id))}
+                            onPointerEnter={() => handleHover(id)}
+                            onPointerLeave={() => handleHover(null)}
+                            className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-sky-600 text-white shadow-xs ring-2 ring-sky-300'
+                                : isHovered
+                                ? 'bg-emerald-700 text-white shadow-xs'
+                                : 'bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-50'
+                            }`}
+                            title="Click to select this event marker on the pitch above"
+                          >
+                            {id}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Historical Snapshot Metrics */}
+                  {activeSnapshot && (
+                    <div className="flex items-center gap-3 font-mono text-[11px] text-slate-600">
+                      <span>
+                        Home Passing ({selectedClaim.interval.label}): <b className="text-slate-900">{activeSnapshot.home.passingSuccessRate}%</b>
+                      </span>
+                      <span>•</span>
+                      <span>
+                        Away Pressure: <b className="text-slate-900">{activeSnapshot.away.pressureFrequencyPerMin}/min</b>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : isPublished ? (
               <div className="space-y-3">
                 {/* Status & Categorization Banner */}
                 <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-slate-100">
@@ -888,7 +996,10 @@ export const BroadcastStudio: React.FC<BroadcastStudioProps> = ({
                   <div className="flex items-center gap-3 text-xs text-slate-600 font-mono">
                     <span className="flex items-center gap-1 font-semibold text-emerald-800">
                       <ShieldCheck className="h-4 w-4 text-emerald-700" />
-                      <span>10/10 Checks Passed</span>
+                      <span>
+                        {Object.values(selectedClaim.audit.ruleChecks).filter(Boolean).length}/
+                        {Object.keys(selectedClaim.audit.ruleChecks).length} Checks Passed
+                      </span>
                     </span>
                     <span>•</span>
                     <span>
@@ -1013,6 +1124,15 @@ export const BroadcastStudio: React.FC<BroadcastStudioProps> = ({
               </div>
             </div>
 
+            {isSuperseded && (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                <AlertTriangle className="h-4 w-4 text-amber-700 shrink-0" />
+                <span>
+                  <b>Historical Draft Archive:</b> These audience personalizations were approved in interval {selectedClaim.interval.label}, but live broadcast publication is currently <b>REVOKED</b> because this insight was superseded by <b>{selectedClaim.supersededByClaimId || 'clm_recovery_31'}</b>.
+                </span>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Casual Fan Card */}
               {(activeAudience === 'both' || activeAudience === 'casual') && (
@@ -1056,13 +1176,57 @@ export const BroadcastStudio: React.FC<BroadcastStudioProps> = ({
             </div>
 
             {/* Producer Rationale Card */}
-            <div className="p-4 rounded-xl bg-slate-100 border border-slate-200 text-xs space-y-1">
-              <div className="font-bold text-slate-900">Producer Publication Decision Log:</div>
-              <p className="text-slate-700 leading-relaxed">{selectedClaim.broadcastDecision?.rationale}</p>
-              <div className="text-[10px] text-slate-500 pt-1">
-                Decided at: {selectedClaim.broadcastDecision?.decidedAt}
+            {isSuperseded ? (
+              <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200 text-xs space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-amber-200">
+                  <div className="font-bold text-amber-950 flex items-center gap-2">
+                    <ShieldAlert className="h-4 w-4 text-amber-800" />
+                    <span>Producer Publication Decision Log — Status: REVOKED (SUPERSEDED)</span>
+                  </div>
+                  <span className="font-mono text-[10px] font-bold text-amber-900 bg-amber-200 px-2 py-0.5 rounded">
+                    GATEWAY REVOCATION
+                  </span>
+                </div>
+
+                {/* Revocation Directive */}
+                <div className="space-y-1">
+                  <div className="font-semibold text-amber-900">Current Gateway Decision:</div>
+                  <p className="text-amber-950 leading-relaxed font-medium">
+                    {selectedClaim.broadcastDecision?.rationale ||
+                      `BROADCAST QUALITY GATEWAY REVOCATION: Claim was superseded by ${selectedClaim.supersededByClaimId || 'clm_recovery_31'} in interval 31'-45'. Superseded claims cannot be published as current broadcast statements.`}
+                  </p>
+                  <div className="text-[11px] text-amber-800 font-mono">
+                    Superseded by: <b>{selectedClaim.supersededByClaimId || 'clm_recovery_31'}</b>
+                    {selectedClaim.broadcastDecision?.revokedAt && (
+                      <span> • Revoked at: {selectedClaim.broadcastDecision.revokedAt}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Historical Approval Archive */}
+                <div className="pt-2 border-t border-amber-200 text-slate-700 space-y-1">
+                  <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" />
+                    <span>Historical Gateway Decision (Prior Approval Archive):</span>
+                  </div>
+                  <p className="text-slate-600 leading-relaxed text-[11px]">
+                    {selectedClaim.broadcastDecision?.historicalApprovalRationale ||
+                      'Approved for live broadcast overlay prior to contradictory match evidence.'}
+                  </p>
+                  <div className="text-[10px] text-slate-500 font-mono">
+                    Initially approved at: {selectedClaim.broadcastDecision?.decidedAt}
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="p-4 rounded-xl bg-slate-100 border border-slate-200 text-xs space-y-1">
+                <div className="font-bold text-slate-900">Producer Publication Decision Log:</div>
+                <p className="text-slate-700 leading-relaxed">{selectedClaim.broadcastDecision?.rationale}</p>
+                <div className="text-[10px] text-slate-500 pt-1">
+                  Decided at: {selectedClaim.broadcastDecision?.decidedAt}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

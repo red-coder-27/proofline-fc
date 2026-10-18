@@ -32,6 +32,16 @@ describe('Signature Demo Contradiction and Supersession Lifecycle', () => {
         priorClaim?.supersessionReason?.includes('invalidating'),
       'Must explain why the explanation was superseded'
     );
+    assert.strictEqual(
+      priorClaim?.broadcastDecision?.published,
+      false,
+      'Superseded claim must NOT remain published for broadcast'
+    );
+    assert.strictEqual(
+      priorClaim?.broadcastDecision?.decision,
+      'rejected_by_producer',
+      'Superseded claim decision must reflect gate revocation'
+    );
 
     // 4. Confirm Revised Narrative Reached Broadcast
     const revisedClaim = advancedDemoState.truthlineClaims.find((c) => c.category === 'tactical_shift');

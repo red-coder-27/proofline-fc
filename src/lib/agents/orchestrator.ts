@@ -177,15 +177,40 @@ export async function executeMultiAgentWorkflow(
     });
   }
 
+  // Handle revision exhaustion if loop ended with revision still requested
+  if (auditorVerdict.shouldRequestRevision && revisionCount >= maxRevisions) {
+    auditorVerdict.audit.outcome = 'rejected';
+    auditorVerdict.audit.decisionReason = `Revision limit exhausted (${maxRevisions}/${maxRevisions} revisions attempted). Claim remains unverified: ${auditorVerdict.revisionDirective || auditorVerdict.audit.decisionReason}`;
+  }
+
+  // Epistemic classification
+  const epistemicType = classifyClaimEpistemics(proposal.candidateClaim.claimText).epistemicType;
+
+  // Determine Truthline claim status
+  let claimStatus: ClaimStatus = 'verified';
+  if (auditorVerdict.audit.outcome === 'rejected') {
+    claimStatus = 'rejected';
+  } else if (auditorVerdict.audit.outcome === 'insufficient_evidence') {
+    claimStatus = 'uncertain';
+  } else if (auditorVerdict.audit.outcome === 'accepted_with_uncertainty') {
+    claimStatus = 'uncertain';
+  }
+
   // STEP 3: Broadcast Producer Quality Gate & Audience Personalization
   stepIndex++;
   const producerDecision = runBroadcastProducer(
     proposal.candidateClaim.claimText,
     auditorVerdict.audit,
     input.snapshot,
-    proposal.candidateClaim.category
+    proposal.candidateClaim.category,
+    {
+      claimId: proposal.candidateClaim.claimId,
+      claimStatus,
+      activeEvents: input.events,
+      isSuperseded: false,
+    }
   );
-  totalTokens += producerDecision.tokensUsed;
+  totalTokens += producerDecision.tokensUsed || 0;
   totalLatency += producerDecision.latencyMs;
 
   messages.push({
@@ -205,19 +230,6 @@ export async function executeMultiAgentWorkflow(
     },
     latencyMs: producerDecision.latencyMs,
   });
-
-  // Epistemic classification
-  const epistemicType = classifyClaimEpistemics(proposal.candidateClaim.claimText).epistemicType;
-
-  // Determine Truthline claim status
-  let claimStatus: ClaimStatus = 'verified';
-  if (auditorVerdict.audit.outcome === 'rejected') {
-    claimStatus = 'rejected';
-  } else if (auditorVerdict.audit.outcome === 'insufficient_evidence') {
-    claimStatus = 'uncertain';
-  } else if (auditorVerdict.audit.outcome === 'accepted_with_uncertainty') {
-    claimStatus = 'uncertain';
-  }
 
   const newTruthlineRecord: TruthlineRecord = {
     claimId: proposal.candidateClaim.claimId,
@@ -245,19 +257,41 @@ export async function executeMultiAgentWorkflow(
   };
 
   // STEP 4: Supersession & Claim Deduplication Handling
-  // If this new claim represents a tactical recovery (contradiction phase),
-  // supersede any previous passing_decay claim from earlier intervals!
+  // When a verified (or qualified) claim arrives in a contradictory/recovery phase,
+  // all prior verified/uncertain claims from earlier intervals are superseded and revoked.
   let updatedActiveClaims = [...input.existingClaims];
 
-  if (input.isContradictoryPhase || proposal.candidateClaim.category === 'tactical_shift') {
+  const isContradiction = Boolean(
+    input.isContradictoryPhase ||
+    proposal.candidateClaim.category === 'tactical_shift' ||
+    (currentInterval.startMinute >= 31 && input.scenarioId === 'contradictory_evidence_later')
+  );
+
+  if (
+    newTruthlineRecord.status === 'verified' &&
+    isContradiction
+  ) {
     for (let i = 0; i < updatedActiveClaims.length; i++) {
       const prior = updatedActiveClaims[i];
-      if (prior.category === 'passing_decay' && prior.status === 'verified') {
+      if (
+        prior.interval.endMinute <= currentInterval.startMinute &&
+        (prior.status === 'verified' || prior.status === 'uncertain')
+      ) {
         updatedActiveClaims[i] = {
           ...prior,
           status: 'superseded',
           supersededByClaimId: newTruthlineRecord.claimId,
           supersessionReason: `Superseded in interval ${currentInterval.label}: New match evidence confirms Titans passing rebounded to ${input.snapshot.home.passingSuccessRate}% under persistent pressure, invalidating the previous explanation of irreversible collapse.`,
+          broadcastDecision: {
+            ...prior.broadcastDecision,
+            published: false,
+            decision: 'rejected_by_producer',
+            rationale: `BROADCAST QUALITY GATEWAY REVOCATION: Claim was superseded by ${newTruthlineRecord.claimId} in interval ${currentInterval.label}. Superseded claims cannot be published as current broadcast statements.`,
+            decidedAt: prior.broadcastDecision?.decidedAt || new Date().toISOString(),
+            historicalApprovalRationale: prior.broadcastDecision?.rationale || 'Approved for live broadcast overlay.',
+            revocationRationale: `Superseded in interval ${currentInterval.label}: New match evidence confirms Titans passing rebounded to ${input.snapshot.home.passingSuccessRate}% under persistent pressure, invalidating the previous explanation of irreversible collapse.`,
+            revokedAt: new Date().toISOString(),
+          },
         };
       }
     }

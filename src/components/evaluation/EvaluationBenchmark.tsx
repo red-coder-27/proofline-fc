@@ -123,7 +123,7 @@ export const EvaluationBenchmark: React.FC = () => {
         {/* Metric 4: Latency & Cost Tradeoff */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-2">
           <div className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">
-            Latency & Cost Tradeoff
+            Verification Gate Overhead
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold tabular-nums text-slate-900">
@@ -134,8 +134,7 @@ export const EvaluationBenchmark: React.FC = () => {
             </span>
           </div>
           <p className="text-[11px] text-slate-600 leading-tight">
-            Est. ${multiAgentEvidenceGated.estimatedCostPerInsightUSD.toFixed(4)}/insight.
-            Honest architectural cost for deterministic auditing.
+            Deterministic audit overhead (excludes external LLM latency). Est. ${multiAgentEvidenceGated.estimatedCostPerInsightUSD.toFixed(4)}/insight.
           </p>
         </div>
       </div>

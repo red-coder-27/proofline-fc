@@ -16,21 +16,51 @@ export interface EventReferenceCheck {
   mismatchedIntervalIds: string[];
 }
 
+export const SUPPORTED_METRICS = [
+  'passingSuccessRate',
+  'pressureFrequencyPerMin',
+  'highTurnovers',
+  'progressiveMeters',
+  'totalPasses',
+  'successfulPasses',
+  'failedPasses',
+  'shotsTotal',
+  'shotsOnTarget',
+] as const;
+
+export type SupportedMetric = (typeof SUPPORTED_METRICS)[number];
+
+export function isSupportedMetric(metric: string): metric is SupportedMetric {
+  return (SUPPORTED_METRICS as readonly string[]).includes(metric);
+}
+
 export function validateEventReferences(
   referencedIds: string[],
   availableEvents: MatchEvent[],
   expectedInterval: IntervalWindow
 ): EventReferenceCheck {
+  if (!referencedIds || !Array.isArray(referencedIds) || referencedIds.length === 0) {
+    return {
+      allValid: false,
+      validCount: 0,
+      totalRequested: 0,
+      missingIds: [],
+      mismatchedIntervalIds: [],
+    };
+  }
+
   const eventMap = new Map<string, MatchEvent>();
   for (const ev of availableEvents) {
     eventMap.set(ev.id, ev);
   }
 
+  // Deduplicate requested IDs so repeated IDs cannot inflate validCount
+  const uniqueRequested = Array.from(new Set(referencedIds.filter((id) => typeof id === 'string' && id.trim().length > 0)));
   const missingIds: string[] = [];
   const mismatchedIntervalIds: string[] = [];
   let validCount = 0;
 
-  for (const id of referencedIds) {
+  for (const id of uniqueRequested) {
     const ev = eventMap.get(id);
     if (!ev) {
       missingIds.push(id);
@@ -41,8 +71,14 @@ export function validateEventReferences(
     }
   }
 
+  const allValid =
+    missingIds.length === 0 &&
+    mismatchedIntervalIds.length === 0 &&
+    validCount > 0 &&
+    validCount === uniqueRequested.length;
+
   return {
-    allValid: missingIds.length === 0 && mismatchedIntervalIds.length === 0 && validCount > 0,
+    allValid,
     validCount,
     totalRequested: referencedIds.length,
     missingIds,
@@ -54,10 +90,34 @@ export function verifyNumericAssertion(
   metricName: string,
   claimedValue: number,
   actualMetrics: TeamIntervalMetrics | { home: TeamIntervalMetrics; away: TeamIntervalMetrics },
-  tolerance = 1.5,
+  tolerance?: number,
   unit = '%',
   teamId?: 'home' | 'away'
 ): NumericAssertion {
+  // 1. Strict metric existence check: Unknown metrics MUST FAIL CLOSED
+  if (!isSupportedMetric(metricName)) {
+    return {
+      metricName,
+      claimedValue,
+      recalculatedValue: NaN,
+      tolerance: tolerance ?? 1.5,
+      matches: false,
+      unit,
+    };
+  }
+
+  // 2. Reject non-finite numbers (NaN, Infinity, -Infinity)
+  if (!Number.isFinite(claimedValue)) {
+    return {
+      metricName,
+      claimedValue,
+      recalculatedValue: NaN,
+      tolerance: tolerance ?? 1.5,
+      matches: false,
+      unit,
+    };
+  }
+
   let targetMetrics: TeamIntervalMetrics;
   if ('home' in actualMetrics && 'away' in actualMetrics) {
     const targetTeam = teamId || (metricName.toLowerCase().includes('pressure') ? 'away' : 'home');
@@ -77,16 +137,36 @@ export function verifyNumericAssertion(
     recalculatedValue = targetMetrics.progressiveMeters;
   } else if (metricName === 'totalPasses') {
     recalculatedValue = targetMetrics.totalPasses;
+  } else if (metricName === 'successfulPasses') {
+    recalculatedValue = targetMetrics.successfulPasses;
+  } else if (metricName === 'failedPasses') {
+    recalculatedValue = targetMetrics.failedPasses;
+  } else if (metricName === 'shotsTotal') {
+    recalculatedValue = targetMetrics.shotsTotal;
+  } else if (metricName === 'shotsOnTarget') {
+    recalculatedValue = targetMetrics.shotsOnTarget;
+  }
+
+  // Explicit metric-appropriate default tolerance
+  let effectiveTolerance = tolerance;
+  if (effectiveTolerance === undefined) {
+    if (metricName === 'pressureFrequencyPerMin') {
+      effectiveTolerance = 0.2;
+    } else if (metricName === 'passingSuccessRate') {
+      effectiveTolerance = 1.5;
+    } else {
+      effectiveTolerance = 1.0;
+    }
   }
 
   const diff = Math.abs(claimedValue - recalculatedValue);
-  const matches = diff <= tolerance;
+  const matches = Number.isFinite(recalculatedValue) && diff <= effectiveTolerance;
 
   return {
     metricName,
     claimedValue,
     recalculatedValue,
-    tolerance,
+    tolerance: effectiveTolerance,
     matches,
     unit,
   };
