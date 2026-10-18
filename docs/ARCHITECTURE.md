@@ -76,7 +76,7 @@ sequenceDiagram
     Auditor->>Auditor: Run 6-Point Verification Checklist:
     Auditor->>Auditor: 1. Validate all referenced event IDs exist in active interval
     Auditor->>Auditor: 2. Check event timestamps fall within interval window
-    Auditor->>Auditor: 3. Recalculate metrics from raw events (±2.0% tolerance)
+    Auditor->>Auditor: 3. Recalculate metrics from raw events (±1.5% passing tolerance)
     Auditor->>Auditor: 4. Epistemic analysis & causal guardrail enforcement
     Auditor->>Auditor: 5. Counter-evidence scan for contradictory events
     Auditor->>Auditor: 6. Sample size check (minimum 10 events)
@@ -112,7 +112,7 @@ Implemented in `src/lib/verificationEngine/verifier.ts` and `rules.ts`:
 
 1. **Event Reference Verification** (`referencedEventsExist`): Every referenced event ID (e.g., `ev_sig_0012`) must exist in the active event stream and belong to the active match interval.
 2. **Interval Boundary Alignment** (`intervalBoundariesValid`): Referenced events must have timestamps (`minute`, `second`) falling strictly within the requested interval window (e.g., `16'-30'`). Cross-interval contamination is rejected.
-3. **Independent Recalculation & Tolerance** (`numericClaimsVerified`): Claimed metric percentages (e.g., passing accuracy) are recalculated from underlying raw events via `calculateTeamIntervalMetrics`. Recalculations must match within `±2.0%` tolerance. Unknown metrics and empty assertion lists fail closed.
+3. **Independent Recalculation & Tolerance** (`numericClaimsVerified`): Claimed metric percentages (e.g., passing accuracy) are recalculated from underlying raw events via `calculateTeamIntervalMetrics`. Recalculations must match within strict tolerances (±1.5% for passing accuracy, ±0.2/min for pressure frequency, ±1.0 for counts). Unknown metrics and empty assertion lists fail closed.
 4. **Epistemic Classification & Causal Guardrail** (`causalGuardrailPassed`): Flags unproven causal attribution verbs (`caused`, `led to`, `forced`) without verifiable mechanism evidence and downgrades claims to `accepted_with_uncertainty` (observed correlation).
 5. **Counter-Evidence Assessment** (`counterEvidenceAssessed`): Scans raw events for contradictory events (e.g., successful progressive passes during an alleged collapse).
 6. **Sample Size Threshold** (`sampleSizeSufficient`): The interval must contain at least 10 recorded events. If count $< 10$, the claim is marked `insufficient_evidence` with calibrated high uncertainty ($\ge 0.85$).

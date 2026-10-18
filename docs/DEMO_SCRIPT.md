@@ -78,7 +78,7 @@ This script provides an exact, timed walkthrough for judges and reviewers. It us
 ### Narration
 > *"Finally, we evaluated this architecture against a standard single-shot LLM baseline across six controlled ground-truth fixtures. While the baseline leaked 100% of flawed claims—hallucinating phantom event IDs and fabricating numbers—our multi-agent evidence gate achieved a 0.0% broadcast hallucination rate and 100% contradiction supersession."*
 >
-> *"Importantly, we disclose the trade-off: 3-agent auditing adds 57 milliseconds of latency and a fraction of a cent in token cost. Furthermore, we test on synthetic telemetry and controlled scenarios rather than claiming large-N generalization. For live broadcast where false graphics destroy credibility, that deterministic guarantee is essential."*
+> *"Importantly, we disclose the trade-off: multi-agent deterministic verification adds minimal execution overhead (under 4ms locally; standard network latency when live) and a fraction of a cent in token cost. Furthermore, we test on synthetic telemetry and controlled scenarios rather than claiming large-N generalization. For live broadcast where false graphics destroy credibility, that deterministic guarantee is essential."*
 
 ---
 
@@ -92,4 +92,4 @@ This script provides an exact, timed walkthrough for judges and reviewers. It us
 | **4** | 0:45 | **Truthline Ledger** rail item | Interval 16'-30' claim marked `SUPERSEDED` |
 | **5** | 1:05 | **Broadcast Studio** rail item | Pitch markers stationary, hover tooltip active, click locks selection |
 | **6** | 1:20 | **Casual Fan** / **Analyst** toggles | Dual audience drafts displayed |
-| **7** | 1:35 | **Evaluation Benchmark** rail item | 0% Hallucination rate, +57ms latency trade-off card |
+| **7** | 1:35 | **Evaluation Benchmark** rail item | 0% Hallucination rate, verification overhead & cost trade-off card |

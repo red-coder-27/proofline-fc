@@ -38,7 +38,7 @@ The baseline represents how standard generative AI applications generate footbal
 
 ### Multi-Agent Evidence-Gated System (`orchestrator.ts`)
 - **Specialist Roles**: Analyst (proposes), Auditor (verifies), and Producer (gates).
-- **6-Point Deterministic Checklist**: Independent recalculation against actual match telemetry within $\pm 2.0\%$ tolerance (`verifier.ts`, `rules.ts`).
+- **6-Point Deterministic Checklist**: Independent recalculation against actual match telemetry within strict tolerances (±1.5% for passing accuracy, ±0.2/min for pressure) (`verifier.ts`, `rules.ts`).
 - **Centralized Publication Gate**: Server-side policy gate (`publicationGate.ts`) strictly checking claim status, authentic passing audits, interval consistency, draft numeric veracity, and guardrails.
 - **Bounded Revision Loop**: If causal language or numeric discrepancies are detected, the Auditor issues specific revision directives (max 2 attempts).
 - **Truthline Ledger**: Stateful supersession links earlier claims to newer revisions when contradictions arrive, updating only upon genuine verified state transitions.

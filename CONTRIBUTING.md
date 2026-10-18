@@ -69,7 +69,7 @@ npx tsc --noEmit
 # 2. Linter Check (Next.js ESLint rules)
 npm run lint
 
-# 3. Automated Test Suite (All 56 unit, regression, adversarial & security tests)
+# 3. Automated Test Suite (All 64 unit, regression, adversarial & security tests across 13 suites)
 npm test
 
 # 4. Production Build Verification (Next.js Turbopack)
