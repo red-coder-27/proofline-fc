@@ -61,34 +61,29 @@ $$\text{\textbf{AI may propose an insight. Evidence determines whether that insi
 
 Rather than expecting a generative model to self-verify, Proofline FC decouples discovery, auditing, and publication into three specialized agent roles backed by an external **6-point mathematical evidence gate**, an immutable claim ledger (**Truthline**), and a centralized **broadcast publication policy gate**.
 
-```
-[Raw Synthetic Match Telemetry] ──► [Spatial Metrics & Turning Points]
-                                                  │
-                                                  ▼
-                                      [Match State Analyst] (Agent 1: LLM / Fallback)
-                                                  │
-                                                  │ (Candidate Claim + Cited Event IDs)
-                                                  ▼
-                                      [Evidence Auditor] (Agent 2: 100% Deterministic Code)
-                                                  │
-                                ┌─────────────────┴─────────────────┐
-                                │                                   │
-                     (Revision Directive)                 (Audit Verdict & Numerics)
-                                │                                   │
-                                ▼                                   ▼
-                   [Bounded Revision Loop]              [Broadcast Producer] (Agent 3: LLM / Fallback)
-                     (Max 2 Attempts)                               │
-                                                                    ▼
-                                                    [Master Publication Gate]
-                                                    (Deterministic Policy Boundary)
-                                                                    │
-                                            ┌───────────────────────┴───────────────────────┐
-                                            │                                               │
-                                     [APPROVED (Verified)]                        [WITHHELD / REVOKED]
-                                            │                                               │
-                                            ▼                                               ▼
-                              Truthline Ledger (Active)                       Truthline Archive (Withheld)
-                              Dual Audience Chyrons (On-Air)                  Producer Decision Log
+```mermaid
+flowchart TD
+    classDef model fill:#eff6ff,stroke:#2563eb,stroke-width:2px,color:#1e40af;
+    classDef deterministic fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#065f46;
+    classDef loop fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#92400e;
+    classDef gate fill:#fdf4ff,stroke:#a855f7,stroke-width:2px,color:#6b21a8;
+    classDef pass fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#065f46;
+    classDef block fill:#fef2f2,stroke:#dc2626,stroke-width:2px,color:#991b1b;
+
+    Telemetry["Raw Synthetic Match Telemetry"]:::deterministic --> Metrics["Spatial Metrics & Turning Points"]:::deterministic
+    Metrics --> Analyst["Match State Analyst<br/>(Agent 1: LLM / Fallback)"]:::model
+
+    Analyst -->|"Candidate Claim + Cited Event IDs"| Auditor["Evidence Auditor<br/>(Agent 2: 100% Deterministic Code)"]:::deterministic
+
+    Auditor -.->|"Revision Directive"| RevLoop["Bounded Revision Loop<br/>(Max 2 Attempts)"]:::loop
+    RevLoop -.->|"Reformulated Candidate"| Analyst
+
+    Auditor -->|"Audit Verdict & Numerics"| Producer["Broadcast Producer<br/>(Agent 3: LLM / Fallback)"]:::model
+
+    Producer --> Gate["Master Publication Gate<br/>(Deterministic Policy Boundary)"]:::gate
+
+    Gate -->|"APPROVED (Verified)"| Approved["Truthline Ledger (Active)<br/>Dual Audience Chyrons (On-Air)"]:::pass
+    Gate -->|"WITHHELD / REVOKED"| Withheld["Truthline Archive (Withheld)<br/>Producer Decision Log"]:::block
 ```
 
 ---
@@ -112,25 +107,25 @@ sequenceDiagram
     Note over User,Ledger: Phase 1: Interval 16'-30' (Passing Decay Detected)
     User->>EE: Advance to Interval 16'-30'
     EE->>Analyst: Passing dropped to ~58% (Munich pressure surge: 2.4/min)
-    Analyst->>Auditor: Propose candidate claim: "Passing collapsed under high press"
+    Analyst->>Auditor: Propose candidate claim: 'Passing collapsed under high press'
     Auditor->>Auditor: 6-Point Audit: Valid IDs, math verified (58.3%), causal language qualified
     Auditor->>Gate: Verdict: ACCEPTED_WITH_UNCERTAINTY (Observed Correlation)
-    Gate->>Ledger: Publish Claim `clm_16_decay` (Status: VERIFIED, On-Air: TRUE)
+    Gate->>Ledger: Publish Claim clm_16_decay (Status: VERIFIED, On-Air: TRUE)
 
     Note over User,Ledger: Phase 2: Interval 31'-45' (Tactical Rebound & Contradiction)
     User->>EE: Advance to Interval 31'-45'
     EE->>Analyst: Telemetry shows passing rebounded to 75.0% despite persistent press
-    Analyst->>Auditor: Propose replacement claim: "Titans adapted structure, passing rebounded to 75%"
+    Analyst->>Auditor: Propose replacement claim: 'Titans adapted structure, passing rebounded to 75%'
     Auditor->>Auditor: 6-Point Audit: Valid IDs, math verified (75.0%), counter-evidence confirmed
     Auditor->>Gate: Verdict: ACCEPTED (Tactical Shift Verified)
 
     Note over Gate,Ledger: Phase 3: Deterministic Supersession & Graphic Revocation
     Gate->>Ledger: Evaluate Historical Claims against Interval 31'-45' telemetry
-    Ledger->>Ledger: Mark `clm_16_decay` as SUPERSEDED (supersededBy: `clm_31_rebound`)
-    Ledger->>Ledger: Revoke publication approval for `clm_16_decay` (On-Air: FALSE)
-    Gate->>Ledger: Publish replacement `clm_31_rebound` (Status: VERIFIED, On-Air: TRUE)
+    Ledger->>Ledger: Mark clm_16_decay as SUPERSEDED (supersededBy: clm_31_rebound)
+    Ledger->>Ledger: Revoke publication approval for clm_16_decay (On-Air: FALSE)
+    Gate->>Ledger: Publish replacement clm_31_rebound (Status: VERIFIED, On-Air: TRUE)
 
-    Note over User,Ledger: Result: Historical claim remains inspectable; obsolete graphic withheld
+    Note over User,Ledger: Result: Historical claim remains inspectable, obsolete graphic withheld
 ```
 
 ### What Happens in the Code:
